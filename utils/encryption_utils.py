@@ -1,52 +1,76 @@
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, padding
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-import os
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 import base64
-
+import os
 
 class EncryptionManager:
-    def __init__(self, key=None):
+    def __init__(self):
         """
-        Initialize the EncryptionManager with AES-GCM encryption and decryption.
-        :param key: A string or bytes key for AES encryption. If not provided, a random 16-byte key is generated.
+        Initialize the EncryptionManager with ECDH for key exchange and ChaCha20-Poly1305 for encryption.
         """
-        if key is None:
-            self.key = os.urandom(32)  # 32 bytes for AES-256
-        else:
-            # Derive a strong key using PBKDF2HMAC for consistent length
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,  # Key length for AES-GCM
-                salt=b"fixed_salt",  # Fixed salt ensures consistent key derivation
-                iterations=100000,
-                backend=default_backend()
-            )
-            self.key = kdf.derive(key.encode('utf-8') if isinstance(key, str) else key)
+        # Generate ECDH public/private key pair for key exchange (P-256 curve)
+        self.private_key = ec.generate_private_key(
+            ec.SECP256R1(),  # SECP256R1 (P-256) curve for ECDH
+            backend=default_backend()
+        )
+        self.public_key = self.private_key.public_key()
+        self.shared_symmetric_key = None  # Will be set after key exchange
+
+
+    def get_public_key(self):
+        """Return the public ECDH key as a Base64-encoded string for sharing."""
+        public_key_pem = self.public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        # Encode the PEM bytes in Base64 for HTTP transmission
+        return base64.b64encode(public_key_pem).decode('utf-8')
+
+
+    def generate_shared_secret(self, recipient_public_key_bytes):
+        """
+        Generate the shared secret using this node's private key and the recipient's public key.
+        :param recipient_public_key_bytes: The recipient's public ECDH key in bytes.
+        :return: The shared secret (a byte string).
+        """
+        recipient_public_key = serialization.load_pem_public_key(
+            recipient_public_key_bytes, backend=default_backend()
+        )
+        # Perform ECDH key exchange and get the shared secret
+        shared_secret = self.private_key.exchange(ec.ECDH(), recipient_public_key)
+
+        # Use HKDF to derive a symmetric key from the shared secret
+        self.shared_symmetric_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,  # 32 bytes for a ChaCha20-Poly1305 key (256-bit key)
+            salt=None,
+            info=None,
+            backend=default_backend()
+        ).derive(shared_secret)
+
+        return self.shared_symmetric_key
 
     def encrypt(self, plaintext):
-        """
-        Encrypt a plaintext message using AES-GCM.
-        :param plaintext: The plaintext message to encrypt (bytes).
-        :return: Encrypted message (bytes) with nonce prepended.
-        """
-        aesgcm = AESGCM(self.key)
-        nonce = os.urandom(12)  # Generate a random 12-byte nonce
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
-        encrypted_data = nonce + ciphertext  # Prepend the nonce to the ciphertext
-        print(f"[DEBUG] Encrypt: Nonce={nonce.hex()}, Ciphertext={ciphertext.hex()}")
-        return encrypted_data  # Return the raw bytes
+        """Encrypt data using the shared symmetric key with ChaCha20-Poly1305."""
+        if self.shared_symmetric_key:
+            cipher = ChaCha20Poly1305(self.shared_symmetric_key)
+            nonce = os.urandom(12)  # Generate a random 12-byte nonce
+            ciphertext = cipher.encrypt(nonce, plaintext, None)  # Encrypt the plaintext
+            return nonce + ciphertext  # Prepend nonce to ciphertext
+        else:
+            raise ValueError("No symmetric key found for encryption")
 
     def decrypt(self, encrypted_data):
-        """
-        Decrypt an encrypted message using AES-GCM.
-        :param encrypted_data: The encrypted message (bytes) with nonce prepended.
-        :return: The decrypted plaintext message (string).
-        """
-        nonce = encrypted_data[:12]  # Extract the first 12 bytes as the nonce
-        ciphertext = encrypted_data[12:]  # The rest is the ciphertext
-        aesgcm = AESGCM(self.key)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-        print(f"[DEBUG] Decrypt: Nonce={nonce.hex()}, Plaintext={plaintext.decode('utf-8')}")
-        return plaintext.decode('utf-8')  # Decode plaintext to a string
+        """Decrypt data using the shared symmetric key with ChaCha20-Poly1305."""
+        if self.shared_symmetric_key:
+            nonce = encrypted_data[:12]  # The first 12 bytes are the nonce
+            ciphertext = encrypted_data[12:]  # The rest is the ciphertext
+            cipher = ChaCha20Poly1305(self.shared_symmetric_key)
+            plaintext = cipher.decrypt(nonce, ciphertext, None)  # Decrypt the ciphertext
+            return plaintext.decode('utf-8')
+        else:
+            raise ValueError("No symmetric key found for decryption")

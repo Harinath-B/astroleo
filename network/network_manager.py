@@ -5,6 +5,7 @@ import random
 from config import DISCOVERY_RANGE, BROADCAST_INTERVAL, BASE_PORT
 from utils.logging_utils import log, setup_logger
 from utils.distance_utils import calculate_distance
+from network.packet import Packet
 
 class NetworkManager:
     def __init__(self, node):
@@ -73,6 +74,30 @@ class NetworkManager:
         while True:
             self.send_heartbeat()
             time.sleep(self.heartbeat_interval)
+            
+    def broadcast_public_key(self):
+        """
+        Broadcast this node's public key to all neighbors.
+        """
+        public_key = self.node.encryption_manager.get_public_key()
+        for neighbor_id in self.neighbors:
+            try:
+                neighbor_address = self.get_neighbor_address(neighbor_id)
+                if neighbor_address:
+                    requests.post(
+                        f"{neighbor_address}/exchange_key",
+                        json={"node_id": self.node.node_id, "public_key": public_key},
+                    )
+                    log(self.logger, f"Broadcasted public key to Node {neighbor_id}")
+            except Exception as e:
+                log(self.logger, f"Failed to broadcast public key to Node {neighbor_id}: {e}", level="error")
+
+    def get_neighbor_address(self, neighbor_id):
+        """
+        Get the HTTP address of a neighbor.
+        """
+        return f"http://127.0.0.1:{5000 + neighbor_id}"
+
 
     def update_position(self, neighbor_id, position):
         distance = calculate_distance(self.node.position, position)
@@ -80,6 +105,7 @@ class NetworkManager:
             self.neighbors[neighbor_id] = (position, distance)
             self.routing_table[neighbor_id] = (neighbor_id, distance)
             log(self.logger, f"Node {self.node.node_id}: Added direct neighbor {neighbor_id} with distance {distance}")
+            self.broadcast_public_key()
             self.propagate_routing_table()
 
     def update_routing_table(self, received_table, sender_id):

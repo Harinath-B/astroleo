@@ -3,7 +3,8 @@ from network.network_manager import NetworkManager
 from network.route_manager import RouteManager
 from network.packet import Packet
 from utils.logging_utils import setup_logger, log
-from utils.encryption_utils import EncryptionManager
+from utils.encryption_utils import *
+import base64
 import struct
 import os
 import time
@@ -18,9 +19,11 @@ class SatelliteNode:
         self.node_id = node_id
         self.position = position
         self.sequence_number = 0
+        
+        self.last_received_packet = None
 
         # Initialize Encryption Manager with a unique key
-        self.encryption_manager = EncryptionManager(b"sixteenbytekey!!")
+        self.encryption_manager = EncryptionManager()
 
         # Initialize Network and Route Managers
         self.network = NetworkManager(self)
@@ -29,6 +32,9 @@ class SatelliteNode:
         # Initialize loggers for general and routing actions
         self.general_logger = setup_logger(self.node_id, "general")
         self.routing_logger = setup_logger(self.node_id, "routing")
+        
+        self.neighbor_public_keys = {}  # {node_id: public_key_bytes}
+        self.shared_symmetric_keys = {}
 
         # Start discovery process to find neighbors
         self.network.start_discovery()
@@ -42,56 +48,10 @@ class SatelliteNode:
             dest_id=dest_id,
             sequence_number=self.sequence_number,
             payload=payload,
-            ttl=10,
-            encryption_manager=self.encryption_manager
+            ttl=10
         )
         self.sequence_number += 1
         return packet
-
-    def receive_packet(self, data):
-        """Handle an incoming packet."""
-        log(self.general_logger, f"Raw data received: {data}")
-
-        try:
-            packet = Packet.from_bytes(data, encryption_manager=self.encryption_manager)
-        except struct.error as e:
-            log(self.general_logger, f"Failed to unpack packet: {e}")
-            return {"status": "error", "message": "Invalid packet format"}
-        
-        decrypted_payload = packet.get_payload()
-        self.last_received_packet = {"source_id": packet.source_id, "decrypted_payload": decrypted_payload}
-        log(self.general_logger, f"Received packet (Type: {packet.message_type}) from Node {packet.source_id} with payload: {decrypted_payload}")
-        
-        if packet.message_type == 2:  # Image packet
-            try:
-                decrypted_payload = zlib.decompress(decrypted_payload)
-            except zlib.error as e:
-                log(self.general_logger, f"Failed to decompress image data: {e}")
-                return {"status": "error", "message": "Decompression failed"}
-            image_path = f"received_images/image_from_node_{packet.source_id}.png"
-            os.makedirs(os.path.dirname(image_path), exist_ok=True)
-            with open(image_path, "wb") as img_file:
-                img_file.write(decrypted_payload)
-            log(self.general_logger, f"Image saved to {image_path}")
-            return {"status": "image_received", "image_path": image_path}
-
-        if packet.message_type == 2:  # Handle image packets
-            image_path = f"received_images/image_from_node_{packet.source_id}.png"
-            os.makedirs(os.path.dirname(image_path), exist_ok=True)
-            with open(image_path, "wb") as img_file:
-                img_file.write(decrypted_payload)
-            log(self.general_logger, f"Image saved to {image_path}")
-            return {"status": "image_received", "image_path": image_path}
-
-        # Check if this is the destination
-        if packet.dest_id == self.node_id:
-            log(self.general_logger, f"Packet successfully delivered to Node {self.node_id}")
-            return {"status": "success", "data": decrypted_payload}
-
-        # Otherwise, forward the packet
-        log(self.general_logger, f"Node {self.node_id}: Forwarding packet to destination {packet.dest_id}")
-        self.router.forward_packet(packet)
-        return {"status": "processed"}
 
     def transmit_image(self, dest_id, image_path):
         """Transmit an image to a destination node."""
@@ -106,6 +66,42 @@ class SatelliteNode:
         packet = self.create_packet(dest_id=dest_id, payload=image_data, message_type=2)
         success = self.router.forward_packet(packet)
         return success
+    
+    def exchange_keys_with_neighbor(self, neighbor_id):
+        """
+        Exchange public keys with a specific neighbor and establish a shared symmetric key.
+        """
+        try:
+            neighbor_address = self.network.get_neighbor_address(neighbor_id)
+            if not neighbor_address:
+                log(self.general_logger, f"Neighbor {neighbor_id} address not found", level="error")
+                return False
+
+            # Send this node's public key to the neighbor
+            public_key = self.encryption_manager.get_public_key()
+            response = requests.post(
+                f"{neighbor_address}/exchange_key",
+                json={"node_id": self.node_id, "public_key": public_key},
+            )
+
+            if response.status_code == 200:
+                log(self.general_logger, f"Key exchange with Node {neighbor_id} successful")
+                return True
+            else:
+                log(self.general_logger, f"Key exchange with Node {neighbor_id} failed: {response.status_code}", level="error")
+                return False
+        except Exception as e:
+            log(self.general_logger, f"Error during key exchange with Node {neighbor_id}: {e}", level="error")
+            return False
+
+    def establish_symmetric_key(self, neighbor_id, public_key_bytes):
+        """
+        Establish a shared symmetric key with a neighbor using their public key.
+        """
+        shared_key = self.encryption_manager.generate_shared_secret(public_key_bytes)
+        self.shared_symmetric_keys[neighbor_id] = shared_key
+        log(self.general_logger, f"Node {self.node_id}: Established symmetric key with Node {neighbor_id}")
+
 
     def to_json(self):
         """Serialize the SatelliteNode instance to JSON."""
@@ -130,11 +126,16 @@ def capture_image(image_dir="images"):
     return image_path
 
 def initialize_node(node_id, position):
-    """Initialize the satellite node with a unique ID and position."""
+    """
+    Initialize the satellite node with a unique ID and position.
+    """
     global satellite
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
     satellite.network.start_heartbeat()
+
+    satellite.network.broadcast_public_key()
+
 
 @app.route('/capture_image', methods=['POST'])
 def capture_image_endpoint():
@@ -194,7 +195,8 @@ def receive():
     if not data:
         return jsonify({"status": "error", "message": "Empty data received"}), 400
 
-    response = satellite.receive_packet(data)
+    
+    response = satellite.router.receive_packet(data)
     return jsonify(response), 200
 
 
@@ -271,6 +273,64 @@ def get_neighbors():
         for neighbor_id, position_distance in neighbors.items()
     }
     return jsonify(response), 200
+
+
+@app.route('/broadcast_key', methods=['POST'])
+def broadcast_key():
+    """
+    Endpoint to send this node's public key to a specific neighbor node.
+    """
+    data = request.get_json()
+    neighbor_id = data.get("neighbor_id")
+    if not neighbor_id:
+        return jsonify({"error": "Neighbor ID not provided"}), 400
+
+    neighbor_address = satellite.network.get_neighbor_address(neighbor_id)
+    if not neighbor_address:
+        return jsonify({"error": f"Neighbor {neighbor_id} not found"}), 404
+
+    public_key = satellite.encryption_manager.get_public_key()
+    response = requests.post(
+        f"{neighbor_address}/exchange_key",
+        json={"node_id": satellite.node_id, "public_key": public_key},
+    )
+
+    if response.status_code == 200:
+        return jsonify({"status": "broadcast_successful"}), 200
+    else:
+        return jsonify({"status": "broadcast_failed", "error": response.json()}), response.status_code
+    
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+import base64
+
+@app.route('/exchange_key', methods=['POST'])
+def exchange_key():
+    """
+    Endpoint to receive a public key from another node and derive a shared symmetric key.
+    """
+    data = request.get_json()
+    sender_id = data.get("node_id")
+    public_key_base64 = data.get("public_key")
+    if not sender_id or not public_key_base64:
+        return jsonify({"error": "Invalid data provided"}), 400
+
+    try:
+        # Decode and deserialize the public key
+        public_key_pem = base64.b64decode(public_key_base64)
+        public_key = load_pem_public_key(public_key_pem)
+
+        # Store sender's public key and derive a shared symmetric key
+        satellite.neighbor_public_keys[sender_id] = public_key
+        shared_key = satellite.encryption_manager.generate_shared_secret(public_key_pem)
+        
+        satellite.shared_symmetric_keys[sender_id] = shared_key
+        log(satellite.general_logger,f"[[KEY] {satellite.shared_symmetric_keys}")
+
+        log(satellite.general_logger, f"Key exchange successful with Node {sender_id}")
+        return jsonify({"status": "key_exchange_successful"}), 200
+    except Exception as e:
+        log(satellite.general_logger, f"Error during key exchange with Node {sender_id}: {str(e), public_key_base64}", level="error")
+        return jsonify({"error": "Key exchange failed"}), 500
 
 
 
