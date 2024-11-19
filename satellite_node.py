@@ -242,7 +242,7 @@ def get_satellite():
 def get_last_received_packet():
     """Endpoint to retrieve the last received packet."""
     if satellite.last_received_packet:
-        return jsonify(satellite.last_received_packet), 200
+        return jsonify(satellite.last_received_packet.payload), 200
     return jsonify({"error": "No packet received yet"}), 404
 
 @app.route('/heartbeat', methods=['POST'])

@@ -30,11 +30,11 @@ def test_communication(sender_id, receiver_id, message):
         get_response = requests.get(get_last_received_url)
         if get_response.status_code == 200:
             received_data = get_response.json()
-            if received_data.get("decrypted_payload") == message:
+            if received_data == message:
                 print(f"Message verified: Node {receiver_id} received the correct message from Node {sender_id}.")
                 return True
             else:
-                print(f"Message verification failed: Expected '{message}', but got '{received_data.get('decrypted_payload')}'.")
+                print(f"Message verification failed: Expected '{message}', but got '{received_data}'.")
                 return False
         else:
             print(f"Failed to fetch the last received packet from Node {receiver_id}: {get_response.json()}")
