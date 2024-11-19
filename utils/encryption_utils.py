@@ -1,45 +1,52 @@
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.padding import PKCS7
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
 import os
+import base64
+
 
 class EncryptionManager:
-    def __init__(self, key=None, pad=None):
-        # if len(key) not in (16, 24, 32):
-        #     raise ValueError(f"Invalid key size: {len(key)} bytes. Key must be 16, 24, or 32 bytes long.")
-        self.key = key if key else os.urandom(16)
-        self.pad = pad if pad else PKCS7(128)
-
-
-    def encrypt(self, data):
+    def __init__(self, key=None):
         """
-        Encrypt data with padding.
+        Initialize the EncryptionManager with AES-GCM encryption and decryption.
+        :param key: A string or bytes key for AES encryption. If not provided, a random 16-byte key is generated.
         """
-        padder = self.pad.padder()
-        padded_data = padder.update(data) + padder.finalize()  # Add padding
-        iv = os.urandom(16)  # Generate a random IV
-        cipher = Cipher(algorithms.AES(self.key), modes.CBC(iv), backend=default_backend())
-        encryptor = cipher.encryptor()
-        encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
-        print(f"[DEBUG] Encrypt: IV={iv.hex()}, Encrypted Data={encrypted_data.hex()}")  # Debug log
-        return iv + encrypted_data  # Prepend IV to the encrypted data
+        if key is None:
+            self.key = os.urandom(32)  # 32 bytes for AES-256
+        else:
+            # Derive a strong key using PBKDF2HMAC for consistent length
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,  # Key length for AES-GCM
+                salt=b"fixed_salt",  # Fixed salt ensures consistent key derivation
+                iterations=100000,
+                backend=default_backend()
+            )
+            self.key = kdf.derive(key.encode('utf-8') if isinstance(key, str) else key)
 
+    def encrypt(self, plaintext):
+        """
+        Encrypt a plaintext message using AES-GCM.
+        :param plaintext: The plaintext message to encrypt (bytes).
+        :return: Encrypted message (bytes) with nonce prepended.
+        """
+        aesgcm = AESGCM(self.key)
+        nonce = os.urandom(12)  # Generate a random 12-byte nonce
+        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+        encrypted_data = nonce + ciphertext  # Prepend the nonce to the ciphertext
+        print(f"[DEBUG] Encrypt: Nonce={nonce.hex()}, Ciphertext={ciphertext.hex()}")
+        return encrypted_data  # Return the raw bytes
 
-    def decrypt(self, data):
+    def decrypt(self, encrypted_data):
         """
-        Decrypt data and remove padding.
+        Decrypt an encrypted message using AES-GCM.
+        :param encrypted_data: The encrypted message (bytes) with nonce prepended.
+        :return: The decrypted plaintext message (string).
         """
-        print(f"[DEBUG] decrypt: {data.hex()}", flush=True)
-        iv, ciphertext = data[:16], data[16:]  # Extract IV and ciphertext
-        print(f"[DEBUG] Decrypt: IV={iv.hex()}, Ciphertext={ciphertext.hex()}", flush=True)  # Debug log
-        cipher = Cipher(algorithms.AES(self.key), modes.CBC(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        padded_data = decryptor.update(ciphertext) + decryptor.finalize()
-        print(f"[DEBUG] Decrypted (Padded) Data: {padded_data.hex()}", flush=True)  # Debug log
-        unpadder = self.pad.unpadder()
-        plaintext = unpadder.update(padded_data) + unpadder.finalize()
-        print(f"[DEBUG] Plaintext: {plaintext.decode('utf-8')}", flush=True)  # Debug log
-        return plaintext
+        nonce = encrypted_data[:12]  # Extract the first 12 bytes as the nonce
+        ciphertext = encrypted_data[12:]  # The rest is the ciphertext
+        aesgcm = AESGCM(self.key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        print(f"[DEBUG] Decrypt: Nonce={nonce.hex()}, Plaintext={plaintext.decode('utf-8')}")
+        return plaintext.decode('utf-8')  # Decode plaintext to a string
