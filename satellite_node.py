@@ -87,6 +87,7 @@ def initialize_node(node_id, position):
     global satellite
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
+    satellite.network.start_heartbeat()
 
 @app.route('/send', methods=['POST'])
 def send_message():
@@ -161,6 +162,36 @@ def get_last_received_packet():
     if satellite.last_received_packet:
         return jsonify(satellite.last_received_packet), 200
     return jsonify({"error": "No packet received yet"}), 404
+
+@app.route('/heartbeat', methods=['POST'])
+def handle_heartbeat():
+    """Endpoint to handle incoming heartbeat packets."""
+    data = request.get_json()
+    sender_id = data.get("node_id")
+    timestamp = data.get("timestamp")
+
+    if not sender_id or not timestamp:
+        return jsonify({"status": "error", "message": "Invalid heartbeat data"}), 400
+
+    satellite.network.receive_heartbeat(sender_id, timestamp)
+    return jsonify({"status": "success"}), 200
+
+@app.route('/get_neighbors', methods=['GET'])
+def get_neighbors():
+    """
+    Retrieve the list of active neighbors and their details.
+    :return: JSON object with neighbors and their attributes.
+    """
+    neighbors = satellite.network.neighbors
+    response = {
+        neighbor_id: {
+            "position": position_distance[0],
+            "distance": position_distance[1]
+        }
+        for neighbor_id, position_distance in neighbors.items()
+    }
+    return jsonify(response), 200
+
 
 
 if __name__ == "__main__":
