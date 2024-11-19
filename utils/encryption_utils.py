@@ -7,43 +7,39 @@ from cryptography.hazmat.primitives import hashes
 import os
 
 class EncryptionManager:
-    def __init__(self, key=None):
+    def __init__(self, key=None, pad=None):
         # if len(key) not in (16, 24, 32):
         #     raise ValueError(f"Invalid key size: {len(key)} bytes. Key must be 16, 24, or 32 bytes long.")
         self.key = key if key else os.urandom(16)
+        self.pad = pad if pad else PKCS7(128)
 
 
     def encrypt(self, data):
         """
-        Encrypts data using AES-CBC mode with PKCS7 padding.
-        Returns the IV concatenated with the ciphertext.
+        Encrypt data with padding.
         """
+        padder = self.pad.padder()
+        padded_data = padder.update(data) + padder.finalize()  # Add padding
         iv = os.urandom(16)  # Generate a random IV
         cipher = Cipher(algorithms.AES(self.key), modes.CBC(iv), backend=default_backend())
         encryptor = cipher.encryptor()
-        
-        # Add PKCS7 padding
-        padder = PKCS7(128).padder()
-        padded_data = padder.update(data) + padder.finalize()
-        
-        # Encrypt and return IV + ciphertext
-        ciphertext = encryptor.update(padded_data) + encryptor.finalize()
-        return iv + ciphertext
+        encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
+        print(f"[DEBUG] Encrypt: IV={iv.hex()}, Encrypted Data={encrypted_data.hex()}")  # Debug log
+        return iv + encrypted_data  # Prepend IV to the encrypted data
 
-    def decrypt(self, encrypted_data):
+
+    def decrypt(self, data):
         """
-        Decrypts data using AES-CBC mode with PKCS7 unpadding.
-        Assumes the IV is prepended to the ciphertext.
+        Decrypt data and remove padding.
         """
-        iv = encrypted_data[:16]  # Extract IV (first 16 bytes)
-        ciphertext = encrypted_data[16:]  # Extract ciphertext
-        
+        print(f"[DEBUG] decrypt: {data.hex()}", flush=True)
+        iv, ciphertext = data[:16], data[16:]  # Extract IV and ciphertext
+        print(f"[DEBUG] Decrypt: IV={iv.hex()}, Ciphertext={ciphertext.hex()}", flush=True)  # Debug log
         cipher = Cipher(algorithms.AES(self.key), modes.CBC(iv), backend=default_backend())
         decryptor = cipher.decryptor()
-        
-        # Decrypt and remove PKCS7 padding
         padded_data = decryptor.update(ciphertext) + decryptor.finalize()
-        unpadder = PKCS7(128).unpadder()
-        data = unpadder.update(padded_data) + unpadder.finalize()
-        
-        return data
+        print(f"[DEBUG] Decrypted (Padded) Data: {padded_data.hex()}", flush=True)  # Debug log
+        unpadder = self.pad.unpadder()
+        plaintext = unpadder.update(padded_data) + unpadder.finalize()
+        print(f"[DEBUG] Plaintext: {plaintext.decode('utf-8')}", flush=True)  # Debug log
+        return plaintext

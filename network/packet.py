@@ -52,34 +52,32 @@ class Packet:
             self.sequence_number,
             self.ttl
         )
-        return header + encrypted_payload
+        serialized_data = header + encrypted_payload
+        print(f"[DEBUG] Serialized Packet: {serialized_data.hex()}")  # Debug log
+        return serialized_data
+
 
     @staticmethod
     def from_bytes(data, encryption_manager=None):
         """
         Recreate a Packet instance from bytes.
-
-        Args:
-            data (bytes): Serialized packet data.
-            encryption_manager (EncryptionManager): Encryption manager for decrypting payload.
         """
         if len(data) < Packet.HEADER_SIZE:
             raise ValueError(f"Insufficient data for header: expected {Packet.HEADER_SIZE} bytes, got {len(data)} -> {data} bytes")
 
         header = data[:Packet.HEADER_SIZE]
         encrypted_payload = data[Packet.HEADER_SIZE:]
+        print(f"[DEBUG] Encrypted Payload: {encrypted_payload.hex()}")  # Debug log
+
+        # Decrypt the payload if encryption is used
         payload = (
             encryption_manager.decrypt(encrypted_payload) if encryption_manager else encrypted_payload
         )
+        print(f"[DEBUG] Decrypted Payload: {payload}")  # Debug log
 
-        # Validate that the payload is bytes
-        if not isinstance(payload, bytes):
-            raise TypeError(f"Decrypted payload must be bytes, got {payload, type(payload)}.")
-        
-        headers = [*struct.unpack(Packet.HEADER_FORMAT, header)]
-        print(f'[DEBUG] {(*headers[:-1], payload, headers[-1], encryption_manager)}')
+        version, message_type, source_id, dest_id, sequence_number, ttl = struct.unpack(Packet.HEADER_FORMAT, header)
+        return Packet(version, message_type, source_id, dest_id, sequence_number, payload, ttl, encryption_manager=encryption_manager)
 
-        return Packet(*headers[:-1], payload, headers[-1], encryption_manager=encryption_manager)
 
 
 
@@ -87,7 +85,7 @@ class Packet:
         """Retrieve the decrypted payload if encryption manager is available, otherwise return the raw payload."""
         # if self.encryption_manager:
         #     return self.encryption_manager.decrypt(self.payload).decode("utf-8")
-        return self.payload.decode("utf-8")
+        return self.payload.decode()
 
     def decrement_ttl(self):
         """Decrease TTL by 1 to manage the hop limit."""

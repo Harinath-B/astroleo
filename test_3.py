@@ -61,10 +61,10 @@ def test_encryption_decryption(source_id, dest_id, payload):
     else:
         print(f"Encryption Test Failed: {response.status_code} - {response.text}")
 
-    # Query /receive endpoint to verify decrypted payload
+    # Query the destination node to verify the last received packet
     print("\nValidating decryption at the destination node...")
-    receive_url = f"http://127.0.0.1:{BASE_PORT + dest_id}/receive"
-    dest_response = requests.post(receive_url)
+    get_last_received_url = f"http://127.0.0.1:{BASE_PORT + dest_id}/get_last_received_packet"
+    dest_response = requests.get(get_last_received_url)
 
     if dest_response.status_code == 200:
         response_data = dest_response.json()
@@ -73,7 +73,8 @@ def test_encryption_decryption(source_id, dest_id, payload):
         else:
             print("Decryption Failed: Received message does not match the original payload.")
     else:
-        print(f"Failed to query /receive endpoint for Node {dest_id}: {dest_response.status_code} - {dest_response.text}")
+        print(f"Failed to query /get_last_received_packet endpoint for Node {dest_id}: {dest_response.status_code} - {dest_response.text}")
+
 
 
 if __name__ == "__main__":

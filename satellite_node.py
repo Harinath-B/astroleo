@@ -16,7 +16,7 @@ class SatelliteNode:
         self.sequence_number = 0
 
         # Initialize Encryption Manager with a unique key
-        self.encryption_manager = EncryptionManager()
+        self.encryption_manager = EncryptionManager(b"sixteenbytekey!!")
 
         # Initialize Network and Route Managers
         self.network = NetworkManager(self)
@@ -154,6 +154,13 @@ def get_routing_table():
 def get_satellite():
     """Endpoint to return the serialized SatelliteNode instance."""
     return jsonify(satellite.to_json()), 200
+
+@app.route('/get_last_received_packet', methods=['GET'])
+def get_last_received_packet():
+    """Endpoint to retrieve the last received packet."""
+    if satellite.last_received_packet:
+        return jsonify(satellite.last_received_packet), 200
+    return jsonify({"error": "No packet received yet"}), 404
 
 
 if __name__ == "__main__":
