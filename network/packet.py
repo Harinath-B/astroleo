@@ -79,8 +79,6 @@ class Packet:
         return Packet(version, message_type, source_id, dest_id, sequence_number, payload, ttl, encryption_manager=encryption_manager)
 
 
-
-
     def get_payload(self):
         """Retrieve the decrypted payload if encryption manager is available, otherwise return the raw payload."""
         # if self.encryption_manager:

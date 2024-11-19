@@ -5,6 +5,10 @@ from network.packet import Packet
 from utils.logging_utils import setup_logger, log
 from utils.encryption_utils import EncryptionManager
 import struct
+import os
+import time
+from PIL import Image
+import zlib
 
 app = Flask(__name__)
 satellite = None  # Global instance for the satellite node
@@ -46,7 +50,6 @@ class SatelliteNode:
 
     def receive_packet(self, data):
         """Handle an incoming packet."""
-        # Log the received data
         log(self.general_logger, f"Raw data received: {data}")
 
         try:
@@ -57,7 +60,28 @@ class SatelliteNode:
         
         decrypted_payload = packet.get_payload()
         self.last_received_packet = {"source_id": packet.source_id, "decrypted_payload": decrypted_payload}
-        log(self.general_logger, f"Received packet from Node {packet.source_id} with payload: {decrypted_payload}")
+        log(self.general_logger, f"Received packet (Type: {packet.message_type}) from Node {packet.source_id} with payload: {decrypted_payload}")
+        
+        if packet.message_type == 2:  # Image packet
+            try:
+                decrypted_payload = zlib.decompress(decrypted_payload)
+            except zlib.error as e:
+                log(self.general_logger, f"Failed to decompress image data: {e}")
+                return {"status": "error", "message": "Decompression failed"}
+            image_path = f"received_images/image_from_node_{packet.source_id}.png"
+            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+            with open(image_path, "wb") as img_file:
+                img_file.write(decrypted_payload)
+            log(self.general_logger, f"Image saved to {image_path}")
+            return {"status": "image_received", "image_path": image_path}
+
+        if packet.message_type == 2:  # Handle image packets
+            image_path = f"received_images/image_from_node_{packet.source_id}.png"
+            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+            with open(image_path, "wb") as img_file:
+                img_file.write(decrypted_payload)
+            log(self.general_logger, f"Image saved to {image_path}")
+            return {"status": "image_received", "image_path": image_path}
 
         # Check if this is the destination
         if packet.dest_id == self.node_id:
@@ -67,9 +91,21 @@ class SatelliteNode:
         # Otherwise, forward the packet
         log(self.general_logger, f"Node {self.node_id}: Forwarding packet to destination {packet.dest_id}")
         self.router.forward_packet(packet)
-
         return {"status": "processed"}
 
+    def transmit_image(self, dest_id, image_path):
+        """Transmit an image to a destination node."""
+        try:
+            with open(image_path, "rb") as img_file:
+                image_data = img_file.read()
+        except FileNotFoundError:
+            log(self.general_logger, f"Image file not found: {image_path}")
+            return False
+
+        image_data = zlib.compress(image_data)
+        packet = self.create_packet(dest_id=dest_id, payload=image_data, message_type=2)
+        success = self.router.forward_packet(packet)
+        return success
 
     def to_json(self):
         """Serialize the SatelliteNode instance to JSON."""
@@ -77,10 +113,21 @@ class SatelliteNode:
             "node_id": self.node_id,
             "position": self.position,
             "sequence_number": self.sequence_number,
-            "routing_table": self.network.routing_table,  # Example addition
+            "routing_table": self.network.routing_table,
             "neighbors": self.network.neighbors
         }
 
+def capture_image(image_dir="images"):
+    """Capture or simulate an image."""
+    if not os.path.exists(image_dir):
+        os.makedirs(image_dir)
+    image_name = f"astro_image_{int(time.time())}.png"
+    image_path = os.path.join(image_dir, image_name)
+
+    # Simulate a dummy image (replace with actual camera functionality)
+    img = Image.new('RGB', (1024, 1024), color=(0, 0, 255))
+    img.save(image_path)
+    return image_path
 
 def initialize_node(node_id, position):
     """Initialize the satellite node with a unique ID and position."""
@@ -88,6 +135,39 @@ def initialize_node(node_id, position):
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
     satellite.network.start_heartbeat()
+
+@app.route('/capture_image', methods=['POST'])
+def capture_image_endpoint():
+    """Capture an image and return its path."""
+    image_path = capture_image()
+    return jsonify({"status": "success", "image_path": image_path}), 200
+
+@app.route('/transmit_image', methods=['POST'])
+def transmit_image():
+    """Transmit an image to a destination node."""
+    data = request.get_json()
+    dest_id = data.get("dest_id")
+    image_path = data.get("image_path")
+
+    if not dest_id or not image_path:
+        return jsonify({"error": "Destination ID or image path not provided"}), 400
+
+    success = satellite.transmit_image(dest_id=dest_id, image_path=image_path)
+
+    if success:
+        return jsonify({"status": "image_transmitted"}), 200
+    else:
+        return jsonify({"status": "transmission_failed"}), 400
+
+@app.route('/get_received_images', methods=['GET'])
+def get_received_images():
+    """List all received images."""
+    image_dir = "received_images"
+    if not os.path.exists(image_dir):
+        return jsonify({"images": []}), 200
+
+    images = [os.path.join(image_dir, img) for img in os.listdir(image_dir) if img.endswith(".png")]
+    return jsonify({"images": images}), 200
 
 @app.route('/send', methods=['POST'])
 def send_message():

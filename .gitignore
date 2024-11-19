@@ -2,3 +2,4 @@ logs/
 __pycache__/
 leoenv/
 positions.json
+images
