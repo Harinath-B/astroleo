@@ -3,6 +3,8 @@ from network.network_manager import NetworkManager
 from network.route_manager import RouteManager
 from network.packet import Packet
 from utils.logging_utils import setup_logger, log
+from utils.encryption_utils import EncryptionManager
+import struct
 
 app = Flask(__name__)
 satellite = None  # Global instance for the satellite node
@@ -12,6 +14,9 @@ class SatelliteNode:
         self.node_id = node_id
         self.position = position
         self.sequence_number = 0
+
+        # Initialize Encryption Manager with a unique key
+        self.encryption_manager = EncryptionManager()
 
         # Initialize Network and Route Managers
         self.network = NetworkManager(self)
@@ -32,20 +37,32 @@ class SatelliteNode:
             source_id=self.node_id,
             dest_id=dest_id,
             sequence_number=self.sequence_number,
-            payload=payload
+            payload=payload,
+            ttl=10,
+            encryption_manager=self.encryption_manager
         )
         self.sequence_number += 1
         return packet
 
     def receive_packet(self, data):
         """Handle an incoming packet."""
-        packet = Packet.from_bytes(data)
-        log(self.general_logger, f"Received packet from Node {packet.source_id} with payload: {packet.payload}")
+        # Log the received data
+        log(self.general_logger, f"Raw data received: {data}")
+
+        try:
+            packet = Packet.from_bytes(data, encryption_manager=self.encryption_manager)
+        except struct.error as e:
+            log(self.general_logger, f"Failed to unpack packet: {e}")
+            return {"status": "error", "message": "Invalid packet format"}
+        
+        decrypted_payload = packet.get_payload()
+        self.last_received_packet = {"source_id": packet.source_id, "decrypted_payload": decrypted_payload}
+        log(self.general_logger, f"Received packet from Node {packet.source_id} with payload: {decrypted_payload}")
 
         # Check if this is the destination
         if packet.dest_id == self.node_id:
             log(self.general_logger, f"Packet successfully delivered to Node {self.node_id}")
-            return {"status": "success", "data": packet.payload}
+            return {"status": "success", "data": decrypted_payload}
 
         # Otherwise, forward the packet
         log(self.general_logger, f"Node {self.node_id}: Forwarding packet to destination {packet.dest_id}")
@@ -54,17 +71,51 @@ class SatelliteNode:
         return {"status": "processed"}
 
 
+    def to_json(self):
+        """Serialize the SatelliteNode instance to JSON."""
+        return {
+            "node_id": self.node_id,
+            "position": self.position,
+            "sequence_number": self.sequence_number,
+            "routing_table": self.network.routing_table,  # Example addition
+            "neighbors": self.network.neighbors
+        }
+
+
 def initialize_node(node_id, position):
     """Initialize the satellite node with a unique ID and position."""
     global satellite
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
 
+@app.route('/send', methods=['POST'])
+def send_message():
+    """Endpoint to send a message to a destination node."""
+    data = request.get_json()
+    dest_id = data.get("dest_id")
+    payload = data.get("payload", "")
+    if not dest_id:
+        return jsonify({"error": "Destination ID not provided"}), 400
+    
+    packet = satellite.create_packet(dest_id=dest_id, payload=payload, message_type=1)
+    success = satellite.router.forward_packet(packet)
+
+    if success:
+        return jsonify({"status": "packet_sent"}), 200
+    else:
+        return jsonify({"status": "packet_failed"}), 400
+    
 @app.route('/receive', methods=['POST'])
 def receive():
     """Endpoint to handle incoming packets."""
     data = request.get_data()
-    return jsonify(satellite.receive_packet(data)), 200
+    log(satellite.general_logger, f"Raw data received: {data}")  # Log received data
+    if not data:
+        return jsonify({"status": "error", "message": "Empty data received"}), 400
+
+    response = satellite.receive_packet(data)
+    return jsonify(response), 200
+
 
 @app.route('/update_position', methods=['POST'])
 def update_position():
@@ -99,22 +150,11 @@ def get_routing_table():
         log(satellite.general_logger, f"Error in /get_routing_table for Node {satellite.node_id}: {e}", level="error")
         return jsonify({"error": "Internal Server Error"}), 500
 
-@app.route('/send', methods=['POST'])
-def send_message():
-    """Endpoint to send a message to a destination node."""
-    data = request.get_json()
-    dest_id = data.get("dest_id")
-    payload = data.get("payload", "")
-    if not dest_id:
-        return jsonify({"error": "Destination ID not provided"}), 400
-    
-    packet = satellite.create_packet(dest_id=dest_id, payload=payload, message_type=1)
-    success = satellite.router.forward_packet(packet)
+@app.route('/get_satellite', methods=['GET'])
+def get_satellite():
+    """Endpoint to return the serialized SatelliteNode instance."""
+    return jsonify(satellite.to_json()), 200
 
-    if success:
-        return jsonify({"status": "packet_sent"}), 200
-    else:
-        return jsonify({"status": "packet_failed"}), 400
 
 if __name__ == "__main__":
     import sys

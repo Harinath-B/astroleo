@@ -10,13 +10,6 @@ MESSAGE = "Hello from Node"
 SLEEP_INTERVAL = 2
 LONG_DELAY = 2
 
-def generate_positions(num_nodes):
-    """Generate random positions for nodes."""
-    return {node_id: (round(random.uniform(0, 10), 2),
-                      round(random.uniform(0, 10), 2),
-                      round(random.uniform(0, 10), 2))
-            for node_id in range(1, num_nodes + 1)}
-
 def save_positions(positions):
     """Save generated positions to a JSON file."""
     with open(POSITIONS_FILE, 'w') as f:
