@@ -1,5 +1,6 @@
-import struct
+# network/packet.py
 
+import struct
 
 class Packet:
     HEADER_FORMAT = "!BBHHII"  # Version, MessageType, SourceID, DestID, SequenceNumber, TTL

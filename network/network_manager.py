@@ -1,8 +1,10 @@
+# network/network_manager.py
+
 import requests
 import time
 import threading
-import random
-from config import DISCOVERY_RANGE, BROADCAST_INTERVAL, BASE_PORT
+from math import cos, sin, radians
+from app.config import DISCOVERY_RANGE, BROADCAST_INTERVAL, BASE_PORT
 from utils.logging_utils import log, setup_logger
 from utils.distance_utils import calculate_distance
 from network.packet import Packet
@@ -13,9 +15,69 @@ class NetworkManager:
         self.neighbors = {}
         self.routing_table = {}
         self.logger = setup_logger(self.node.node_id, "general")
-        self.heartbeat_interval = 5  # Interval to send heartbeats (seconds)
+        self.heartbeat_interval = 10  # Interval to send heartbeats (seconds)
         self.heartbeat_timeout = 15  # Timeout to consider a neighbor inactive (seconds)
         self.last_heartbeat = {}  # Track last received heartbeat from neighbors
+        self.position_update_interval = 10  # Position update interval (seconds)
+
+    def start(self):
+        """
+        Start all necessary threads for dynamic position updates, discovery, and heartbeats.
+        """
+        threading.Thread(target=self._heartbeat_thread, daemon=True).start()
+        threading.Thread(target=self.monitor_neighbors, daemon=True).start()
+        threading.Thread(target=self._position_update_thread, daemon=True).start()
+        threading.Thread(target=self._discovery_thread, daemon=True).start()
+
+    def _position_update_thread(self):
+        """
+        Periodically update the node's position based on a mobility model.
+        """
+        while True:
+            self.update_position()
+            self.broadcast_position()
+            time.sleep(self.position_update_interval)
+
+    def update_position(self):
+        """
+        Simulate position updates using a circular orbital model.
+        """
+        t = time.time()  # Current time
+        radius = 5  # Example orbital radius
+        speed = 0.01  # Angular velocity (radians/second)
+        center_x, center_y = 5, 5  # Orbital center
+
+        new_x = center_x + radius * cos(speed * t)
+        new_y = center_y + radius * sin(speed * t)
+        self.node.position = (new_x, new_y, self.node.position[2])
+        log(self.logger, f"Updated position to {self.node.position}")
+
+    def broadcast_position(self):
+        """
+        Broadcast the updated position to all nodes in the network.
+        """
+        data = {"node_id": self.node.node_id, "position": self.node.position}
+        for node_id in range(1, 11):  # Assuming up to 10 nodes
+            if node_id != self.node.node_id:
+                try:
+                    requests.post(
+                        f"http://127.0.0.1:{BASE_PORT + node_id}/update_position",
+                        json=data,
+                    )
+                except requests.RequestException:
+                    pass
+
+    def update_position_with_neighbor(self, neighbor_id, position):
+        """
+        Handle position updates from a neighbor.
+        """
+        distance = calculate_distance(self.node.position, position)
+        if distance <= DISCOVERY_RANGE:
+            self.neighbors[neighbor_id] = (position, distance)
+            self.routing_table[neighbor_id] = (neighbor_id, distance)
+            log(self.logger, f"Node {self.node.node_id}: Added direct neighbor {neighbor_id} with distance {distance}")
+            self.broadcast_public_key()
+            self.propagate_routing_table()
 
     def send_heartbeat(self):
         """
@@ -60,21 +122,6 @@ class NetworkManager:
             log(self.node.general_logger, f"Removed neighbor {neighbor_id}")
         self.routing_table.pop(neighbor_id, None)
 
-    def start_heartbeat(self):
-        """
-        Start sending heartbeats and monitoring neighbors.
-        """
-        threading.Thread(target=self._heartbeat_thread, daemon=True).start()
-        threading.Thread(target=self.monitor_neighbors, daemon=True).start()
-
-    def _heartbeat_thread(self):
-        """
-        Periodically send heartbeats.
-        """
-        while True:
-            self.send_heartbeat()
-            time.sleep(self.heartbeat_interval)
-            
     def broadcast_public_key(self):
         """
         Broadcast this node's public key to all neighbors.
@@ -98,67 +145,56 @@ class NetworkManager:
         """
         return f"http://127.0.0.1:{5000 + neighbor_id}"
 
-
-    def update_position(self, neighbor_id, position):
-        distance = calculate_distance(self.node.position, position)
-        if distance <= DISCOVERY_RANGE:
-            self.neighbors[neighbor_id] = (position, distance)
-            self.routing_table[neighbor_id] = (neighbor_id, distance)
-            log(self.logger, f"Node {self.node.node_id}: Added direct neighbor {neighbor_id} with distance {distance}")
-            self.broadcast_public_key()
-            self.propagate_routing_table()
-
     def update_routing_table(self, received_table, sender_id):
-        """Update routing table based on a received routing table from a neighbor."""
-        # Check if sender is a known neighbor
+        """
+        Update routing table based on a received routing table from a neighbor.
+        """
         if sender_id not in self.neighbors:
-            log(self.logger, f"Node {self.node.node_id}: Received routing table from unknown sender {sender_id}", level="warning")
-            return  # Skip processing if sender is not a neighbor
+            log(self.logger, f"Received routing table from unknown sender {sender_id}", level="warning")
+            return
 
         updated = False
         for dest_id, (next_hop, distance) in received_table.items():
             if dest_id == self.node.node_id:
-                continue  # Ignore routes to self
+                continue
 
-            # Calculate the total distance via the sender
             new_distance = self.neighbors[sender_id][1] + distance
-
-            # Update if route to destination is shorter or destination is new
             if dest_id not in self.routing_table or new_distance < self.routing_table[dest_id][1]:
                 self.routing_table[dest_id] = (sender_id, new_distance)
                 updated = True
-                log(self.logger, f"Node {self.node.node_id}: Updated route to {dest_id} via {sender_id} with distance {new_distance}")
+                log(self.logger, f"Updated route to {dest_id} via {sender_id} with distance {new_distance}")
 
-        # Propagate routing table to neighbors if updates were made
         if updated:
             self.propagate_routing_table()
 
-
     def propagate_routing_table(self):
+        """
+        Propagate the routing table to all neighbors.
+        """
         serializable_routing_table = {str(dest): list(route) for dest, route in self.routing_table.items()}
         for neighbor_id in self.neighbors:
             try:
                 requests.post(
                     f"http://127.0.0.1:{BASE_PORT + int(neighbor_id)}/receive_routing_table",
-                    json=serializable_routing_table
+                    json=serializable_routing_table,
                 )
-                log(self.logger, f"Node {self.node.node_id}: Sent routing table to Neighbor {neighbor_id}")
+                log(self.logger, f"Sent routing table to Neighbor {neighbor_id}")
             except requests.RequestException as e:
-                log(self.logger, f"Node {self.node.node_id}: Failed to send routing table to Neighbor {neighbor_id} - {e}", level="error")
+                log(self.logger, f"Failed to send routing table to Neighbor {neighbor_id} - {e}", level="error")
 
-    def broadcast_position(self):
-        data = {"node_id": self.node.node_id, "position": self.node.position}
-        for node_id in range(1, 11):
-            if node_id != self.node.node_id:
-                try:
-                    requests.post(f"http://127.0.0.1:{BASE_PORT + node_id}/update_position", json=data)
-                except requests.RequestException:
-                    pass
-
-    def start_discovery(self):
-        threading.Thread(target=self._discovery_thread, daemon=True).start()
+    def _heartbeat_thread(self):
+        """
+        Periodically send heartbeats.
+        """
+        while True:
+            self.send_heartbeat()
+            time.sleep(self.heartbeat_interval)
 
     def _discovery_thread(self):
+        """
+        Periodically broadcast positions for discovery.
+        """
         while True:
             self.broadcast_position()
             time.sleep(BROADCAST_INTERVAL)
+            

@@ -1,9 +1,11 @@
+# launch_nodes.py
+
 import subprocess
 import time
 import random
 import json
 import os
-from config import NUM_NODES, POSITIONS_FILE
+from app.config import NUM_NODES, POSITIONS_FILE
 
 def generate_positions(num_nodes):
     positions = {node_id: (round(random.uniform(0, 10), 2),

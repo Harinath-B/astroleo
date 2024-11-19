@@ -68,7 +68,7 @@ def test_encryption_decryption(source_id, dest_id, payload):
 
     if dest_response.status_code == 200:
         response_data = dest_response.json()
-        if response_data.get("decrypted_payload") == payload:
+        if response_data == payload:
             print("Decryption Verified: Message matches the original payload.")
         else:
             print("Decryption Failed: Received message does not match the original payload.")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     # Step 2: Routing Test
     print("\n=== Step 2: Routing Test ===")
-    source_node = 1
+    source_node = 2
     destination_node = 3
     test_routing(source_node, destination_node, "Hello from Node 1!")
 

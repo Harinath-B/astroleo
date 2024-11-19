@@ -1,10 +1,5 @@
 import sys
-from flask import Flask
-from app.satellite_node import initialize_node
-from app.routes import routes
-
-app = Flask(__name__)
-app.register_blueprint(routes)
+from app.satellite_node import initialize_node, app
 
 def main():
     if len(sys.argv) < 4:
