@@ -25,14 +25,15 @@ class Packet:
         self.dest_id = dest_id
         self.sequence_number = sequence_number
         self.ttl = ttl  # Time-to-Live for limiting hops
+        self.payload = payload
 
-        # Ensure the payload is bytes for consistency
-        if isinstance(payload, str):
-            self.payload = payload.encode("utf-8")
-        elif isinstance(payload, bytes):
-            self.payload = payload
-        else:
-            raise TypeError(f"Payload must be of type str or bytes, got {type(payload)}.")
+        # # Ensure the payload is bytes for consistency
+        # if isinstance(payload, str):
+        #     self.payload = payload.encode("utf-8")
+        # elif isinstance(payload, bytes):
+        #     self.payload = payload
+        # else:
+        #     raise TypeError(f"Payload must be of type str or bytes, got {type(payload)}.")
 
     def to_bytes(self):
         """

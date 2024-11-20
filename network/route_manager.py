@@ -59,11 +59,13 @@ class RouteManager:
             return
 
         shared_key = self.node.shared_symmetric_keys[neighbor_id]
-        encrypted_payload = self.node.encryption_manager.encrypt(packet.payload)
+        encrypted_payload = self.node.encryption_manager.encrypt(packet.payload, shared_key)
 
         # Create an encrypted packet with the original header but encrypted payload
         packet.payload = encrypted_payload
         serialized_packet = packet.to_bytes()
+        log(self.node.general_logger, f"Serialized packet sent: {serialized_packet}")
+        log(self.node.general_logger, f"Shared symmetric key for Node {neighbor_id}: {shared_key}")
 
         url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive"
         try:
@@ -80,6 +82,8 @@ class RouteManager:
         Handle an incoming serialized packet.
         Decrypt the payload using the shared symmetric key.
         """
+        log(self.node.general_logger, f"Received packet data: {serialized_packet}")
+
         try:
             packet = Packet.from_bytes(serialized_packet)
         except Exception as e:
@@ -90,19 +94,19 @@ class RouteManager:
         if sender_id not in self.node.shared_symmetric_keys:
             log(self.node.general_logger, f"Node {self.node.node_id}: No symmetric key with Node {sender_id}. Cannot decrypt packet.", level="error")
             return
-
-        shared_key = self.node.shared_symmetric_keys[sender_id]
+        
+        log(self.node.general_logger, f"Shared symmetric key for Node {sender_id}: {self.node.shared_symmetric_keys[sender_id]}")
+     
         try:
-            decrypted_payload = self.node.encryption_manager.decrypt(packet.payload)
-            packet.payload = decrypted_payload
+            decrypted_payload = self.node.encryption_manager.decrypt(packet.payload, self.node.shared_symmetric_keys[sender_id])
             log(self.node.general_logger, f"Node {self.node.node_id}: Successfully decrypted packet from Node {sender_id}")
         except Exception as e:
-            log(self.node.general_logger, f"Node {self.node.node_id}: Failed to decrypt packet from Node {sender_id} - {e}", level="error")
+            log(self.node.general_logger, f"Node {self.node.node_id}: Failed to decrypt packet from Node {sender_id} - {e} - payload: {packet.payload}", level="error")
             return
 
+        self.node.last_received_packet = packet
         # Process the packet further (e.g., deliver to destination or forward)
         if packet.dest_id == self.node.node_id:
-            self.node.last_received_packet = packet
             log(self.node.general_logger, f"Node {self.node.node_id}: Packet delivered successfully. Payload: {packet.payload}")
         else:
             self.forward_packet(packet)

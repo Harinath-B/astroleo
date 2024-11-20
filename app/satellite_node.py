@@ -115,8 +115,6 @@ class SatelliteNode:
             "neighbors": self.network.neighbors
         }
 
-
-
 def initialize_node(node_id, position):
     """
     Initialize the satellite node with a unique ID and position.
@@ -185,14 +183,18 @@ def receive():
     log(satellite.general_logger, f"Raw data received: {data}")  # Log received data
     if not data:
         return jsonify({"status": "error", "message": "Empty data received"}), 400
-
     
     response = satellite.router.receive_packet(data)
+    log(satellite.routing_logger, f"last received packet: {satellite.last_received_packet}")
     return jsonify(response), 200
 
 @app.route('/get_position', methods=['GET'])
 def get_position():
     return jsonify(satellite.position)
+
+@app.route('/get_keys', methods=['GET'])
+def get_keys():
+    return jsonify({f"{satellite.node_id}": {"Shared": str(satellite.shared_symmetric_keys), "Public": str(satellite.neighbor_public_keys)}})
 
 @app.route('/update_position', methods=['POST'])
 def update_position():
@@ -236,7 +238,7 @@ def get_satellite():
 def get_last_received_packet():
     """Endpoint to retrieve the last received packet."""
     if satellite.last_received_packet:
-        return jsonify(satellite.last_received_packet.payload), 200
+        return jsonify(satellite.last_received_packet.payload.decode()), 200
     return jsonify({"error": "No packet received yet"}), 404
 
 @app.route('/heartbeat', methods=['POST'])

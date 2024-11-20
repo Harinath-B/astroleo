@@ -1,37 +1,38 @@
 # Import necessary modules
 from utils.encryption_utils import EncryptionManager
-from satellite_node import SatelliteNode
-def test_key_exchange_and_encryption():
-    """
-    Test ECDH key exchange between two SatelliteNode instances, followed by data encryption and decryption
-    using ChaCha20-Poly1305 encryption.
-    """
-    # Create two EncryptionManager instances (simulating two satellites)
-    node_1 = EncryptionManager()
-    node_2 = EncryptionManager()
+import base64
 
-    # Step 1: Node 1 sends its public key to Node 2
-    public_key_1 = node_1.get_public_key()
+def test_encryption_manager_with_5_nodes():
+    nodes = [EncryptionManager() for _ in range(5)]
+    public_keys = [base64.b64decode(node.get_public_key().encode('utf-8')) for node in nodes]
 
-    # Step 2: Node 2 generates the shared secret using Node 1's public key
-    symmetric_key_2 = node_2.generate_shared_secret(public_key_1)
+    # Store symmetric keys for each node pair
+    symmetric_keys = {}
 
-    # Step 3: Node 1 generates the shared secret using Node 2's public key
-    symmetric_key_1 = node_1.generate_shared_secret(node_2.get_public_key())
+    for i in range(len(nodes)):
+        for j in range(len(nodes)):
+            if i != j:
+                # Generate shared keys for each node pair and store them
+                symmetric_keys[(i, j)] = nodes[i].generate_shared_secret(public_keys[j])
 
-    # Step 4: Encrypt data using the shared symmetric key
-    message = "Hello, this is a test message!"
-    print(f"Original message: {message}")
+    for i in range(len(nodes)):
+        for j in range(len(nodes)):
+            if i != j:
+                # Retrieve the symmetric key for the current node pair
+                symmetric_key = symmetric_keys[(i, j)]
 
-    encrypted_data = node_1.encrypt_data(message)
+                # Encrypt and decrypt a message
+                plaintext = f"Message from Node {i} to Node {j}."
+                print(f"Encrypting: {plaintext}")
+                encrypted_data = nodes[i].encrypt(plaintext, symmetric_key)
+                print(f"Encrypted data: {encrypted_data}")
+                decrypted_message = nodes[j].decrypt(encrypted_data, symmetric_key)
+                print(f"Decrypted: {decrypted_message.decode('utf-8')}")
 
-    # Step 5: Node 2 decrypts the data using the shared symmetric key
-    decrypted_message = node_2.decrypt_data(encrypted_data)
+                # Verify the decrypted message matches the plaintext
+                assert decrypted_message.decode('utf-8') == plaintext, "Decryption failed!"
 
-    # Step 6: Assert that the decrypted message matches the original message
-    assert decrypted_message == message, f"Decrypted message does not match the original! Expected: {message}, Got: {decrypted_message}"
+    print("Test passed: All nodes successfully exchanged and decrypted messages.")
 
-    print("Test passed! Encryption and decryption successful.")
-
-if __name__ == "__main__":
-    test_key_exchange_and_encryption()
+# Run the test
+test_encryption_manager_with_5_nodes()

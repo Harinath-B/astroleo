@@ -1,16 +1,16 @@
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, padding
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-import base64
 import os
+import base64
 
 class EncryptionManager:
     def __init__(self):
         """
-        Initialize the EncryptionManager with ECDH for key exchange and ChaCha20-Poly1305 for encryption.
+        Initialize the EncryptionManager with ECDH for key exchange and ChaCha20 for encryption.
         """
         # Generate ECDH public/private key pair for key exchange (P-256 curve)
         self.private_key = ec.generate_private_key(
@@ -18,8 +18,6 @@ class EncryptionManager:
             backend=default_backend()
         )
         self.public_key = self.private_key.public_key()
-        self.shared_symmetric_key = None  # Will be set after key exchange
-
 
     def get_public_key(self):
         """Return the public ECDH key as a Base64-encoded string for sharing."""
@@ -29,7 +27,6 @@ class EncryptionManager:
         )
         # Encode the PEM bytes in Base64 for HTTP transmission
         return base64.b64encode(public_key_pem).decode('utf-8')
-
 
     def generate_shared_secret(self, recipient_public_key_bytes):
         """
@@ -43,34 +40,64 @@ class EncryptionManager:
         # Perform ECDH key exchange and get the shared secret
         shared_secret = self.private_key.exchange(ec.ECDH(), recipient_public_key)
 
-        # Use HKDF to derive a symmetric key from the shared secret
-        self.shared_symmetric_key = HKDF(
+        # Use HKDF to derive the symmetric key from the shared secret
+        symmetric_key = HKDF(
             algorithm=hashes.SHA256(),
-            length=32,  # 32 bytes for a ChaCha20-Poly1305 key (256-bit key)
+            length=32,  # 32 bytes for ChaCha20 (256-bit key)
             salt=None,
             info=None,
             backend=default_backend()
         ).derive(shared_secret)
 
-        return self.shared_symmetric_key
+        return symmetric_key
 
-    def encrypt(self, plaintext):
-        """Encrypt data using the shared symmetric key with ChaCha20-Poly1305."""
-        if self.shared_symmetric_key:
-            cipher = ChaCha20Poly1305(self.shared_symmetric_key)
-            nonce = os.urandom(12)  # Generate a random 12-byte nonce
-            ciphertext = cipher.encrypt(nonce, plaintext, None)  # Encrypt the plaintext
-            return nonce + ciphertext  # Prepend nonce to ciphertext
-        else:
-            raise ValueError("No symmetric key found for encryption")
+    def encrypt(self, plaintext, symmetric_key):
+        """
+        Encrypt data using ChaCha20.
+        :param plaintext: Data to encrypt as bytes or string.
+        :param symmetric_key: 32-byte ChaCha20 key.
+        :return: Encrypted data with nonce prepended.
+        """
+        # Generate a 16-byte nonce
+        nonce = os.urandom(16)
 
-    def decrypt(self, encrypted_data):
-        """Decrypt data using the shared symmetric key with ChaCha20-Poly1305."""
-        if self.shared_symmetric_key:
-            nonce = encrypted_data[:12]  # The first 12 bytes are the nonce
-            ciphertext = encrypted_data[12:]  # The rest is the ciphertext
-            cipher = ChaCha20Poly1305(self.shared_symmetric_key)
-            plaintext = cipher.decrypt(nonce, ciphertext, None)  # Decrypt the ciphertext
-            return plaintext.decode('utf-8')
-        else:
-            raise ValueError("No symmetric key found for decryption")
+        # Ensure plaintext is in bytes
+        if isinstance(plaintext, str):
+            plaintext = plaintext.encode('utf-8')
+
+        # Encrypt the plaintext
+        cipher = Cipher(
+            algorithms.ChaCha20(symmetric_key, nonce),
+            mode=None,
+            backend=default_backend()
+        )
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+
+        # Return nonce + ciphertext
+        return nonce + ciphertext
+
+    def decrypt(self, encrypted_data, symmetric_key):
+        """
+        Decrypt data using ChaCha20.
+        :param encrypted_data: Data to decrypt, with nonce prepended.
+        :param symmetric_key: 32-byte ChaCha20 key.
+        :return: Decrypted plaintext as bytes.
+        """
+        try:
+            # Extract nonce (first 16 bytes) and ciphertext
+            nonce = encrypted_data[:16]
+            ciphertext = encrypted_data[16:]
+
+            # Decrypt the ciphertext
+            cipher = Cipher(
+                algorithms.ChaCha20(symmetric_key, nonce),
+                mode=None,
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+            return plaintext  # Return raw bytes
+        except Exception as e:
+            raise ValueError(f"Decryption failed: {e}, payload: {encrypted_data}")
