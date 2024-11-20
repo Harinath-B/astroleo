@@ -1,5 +1,3 @@
-# network/route_manager.py
-
 import requests
 from utils.logging_utils import log
 from network.packet import Packet
@@ -13,6 +11,10 @@ class RouteManager:
         Forward the packet to the next hop based on the routing table.
         If no route exists, use a fallback mechanism (e.g., flooding).
         """
+        if not self.node.is_active():
+            log(self.node.general_logger, "Node is offline and cannot forward packets.")
+            return False
+
         network = self.node.network
         dest_id = packet.dest_id
 
@@ -44,6 +46,10 @@ class RouteManager:
         """
         Flood the packet to all neighbors.
         """
+        if not self.node.is_active():
+            log(self.node.general_logger, "Node is offline and cannot flood packets.")
+            return False
+
         for neighbor_id in self.node.network.neighbors:
             log(self.node.general_logger, f"Node {self.node.node_id}: Flooding packet to Node {neighbor_id}")
             self.send_to_node(neighbor_id, packet)
@@ -54,6 +60,10 @@ class RouteManager:
         Send the packet to a specific neighbor node.
         Encrypt the packet using the shared symmetric key before transmission.
         """
+        if not self.node.is_active():
+            log(self.node.general_logger, "Node is offline and cannot send packets.")
+            return
+
         if neighbor_id not in self.node.shared_symmetric_keys:
             log(self.node.general_logger, f"Node {self.node.node_id}: No symmetric key with Node {neighbor_id}. Cannot send packet.", level="error")
             return
@@ -82,6 +92,10 @@ class RouteManager:
         Handle an incoming serialized packet.
         Decrypt the payload using the shared symmetric key.
         """
+        if not self.node.is_active():
+            log(self.node.general_logger, "Node is offline and cannot receive packets.")
+            return
+
         log(self.node.general_logger, f"Received packet data: {serialized_packet}")
 
         try:
@@ -94,12 +108,12 @@ class RouteManager:
         if sender_id not in self.node.shared_symmetric_keys:
             log(self.node.general_logger, f"Node {self.node.node_id}: No symmetric key with Node {sender_id}. Cannot decrypt packet.", level="error")
             return
-        
+
         log(self.node.general_logger, f"Shared symmetric key for Node {sender_id}: {self.node.shared_symmetric_keys[sender_id]}")
-     
+
         try:
             decrypted_payload = self.node.encryption_manager.decrypt(packet.payload, self.node.shared_symmetric_keys[sender_id])
-            log(self.node.general_logger, f"Node {self.node.node_id}: Successfully decrypted packet from Node {sender_id}")
+            log(self.node.general_logger, f"Node {self.node.node_id}: Successfully decrypted packet from Node {sender_id}; Payload: {decrypted_payload}")
         except Exception as e:
             log(self.node.general_logger, f"Node {self.node.node_id}: Failed to decrypt packet from Node {sender_id} - {e} - payload: {packet.payload}", level="error")
             return

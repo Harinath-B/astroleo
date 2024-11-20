@@ -1,5 +1,3 @@
-# network/network_manager.py
-
 import requests
 import time
 import threading
@@ -8,6 +6,7 @@ from app.config import DISCOVERY_RANGE, BROADCAST_INTERVAL, BASE_PORT
 from utils.logging_utils import log, setup_logger
 from utils.distance_utils import calculate_distance
 from network.packet import Packet
+import json
 
 class NetworkManager:
     def __init__(self, node):
@@ -15,8 +14,8 @@ class NetworkManager:
         self.neighbors = {}
         self.routing_table = {}
         self.logger = setup_logger(self.node.node_id, "general")
-        self.heartbeat_interval = 10  # Interval to send heartbeats (seconds)
-        self.heartbeat_timeout = 15  # Timeout to consider a neighbor inactive (seconds)
+        self.heartbeat_interval = 5  # Interval to send heartbeats (seconds)
+        self.heartbeat_timeout = 7  # Timeout to consider a neighbor inactive (seconds)
         self.last_heartbeat = {}  # Track last received heartbeat from neighbors
         self.position_update_interval = 10  # Position update interval (seconds)
 
@@ -34,8 +33,9 @@ class NetworkManager:
         Periodically update the node's position based on a mobility model.
         """
         while True:
-            self.update_position()
-            self.broadcast_position()
+            if self.node.is_active():
+                self.update_position()
+                self.broadcast_position()
             time.sleep(self.position_update_interval)
 
     def update_position(self):
@@ -56,6 +56,9 @@ class NetworkManager:
         """
         Broadcast the updated position to all nodes in the network.
         """
+        if not self.node.is_active():
+            return
+
         data = {"node_id": self.node.node_id, "position": self.node.position}
         for node_id in range(1, 11):  # Assuming up to 10 nodes
             if node_id != self.node.node_id:
@@ -83,6 +86,9 @@ class NetworkManager:
         """
         Send heartbeat packets to all neighbors.
         """
+        if not self.node.is_active():
+            return
+
         for neighbor_id in self.neighbors:
             try:
                 requests.post(
@@ -105,11 +111,12 @@ class NetworkManager:
         Monitor neighbors' health by checking the last heartbeat timestamp.
         """
         while True:
-            current_time = time.time()
-            for neighbor_id, last_time in list(self.last_heartbeat.items()):
-                if current_time - last_time > self.heartbeat_timeout:
-                    log(self.node.general_logger, f"Node {neighbor_id} is unreachable", level="warning")
-                    self.remove_neighbor(neighbor_id)
+            if self.node.is_active():
+                current_time = time.time()
+                for neighbor_id, last_time in list(self.last_heartbeat.items()):
+                    if current_time - last_time > self.heartbeat_timeout:
+                        log(self.node.general_logger, f"Node {neighbor_id} is unreachable", level="warning")
+                        self.remove_neighbor(neighbor_id)
             time.sleep(self.heartbeat_interval)
 
     def remove_neighbor(self, neighbor_id):
@@ -126,6 +133,9 @@ class NetworkManager:
         """
         Broadcast this node's public key to all neighbors.
         """
+        if not self.node.is_active():
+            return
+
         public_key = self.node.encryption_manager.get_public_key()
         for neighbor_id in self.neighbors:
             try:
@@ -139,6 +149,21 @@ class NetworkManager:
             except Exception as e:
                 log(self.logger, f"Failed to broadcast public key to Node {neighbor_id}: {e}", level="error")
 
+    def get_neighbor_addresses(self):
+        """Retrieve the list of active neighbors and their details."""
+        if not self.node.is_active():
+            return json.dumps({"error": "Node is offline"}), 400
+
+        neighbors = self.neighbors
+        response = dict()
+        for neighbor_id in neighbors.keys():
+            response[neighbor_id] = self.get_neighbor_address(neighbor_id)
+        # response = {
+        #     neighbor_id: self.get_neighbor_address(neighbor_id)
+        #     for neighbor_id in neighbors.keys()
+        # }
+        return response, 200
+    
     def get_neighbor_address(self, neighbor_id):
         """
         Get the HTTP address of a neighbor.
@@ -171,6 +196,9 @@ class NetworkManager:
         """
         Propagate the routing table to all neighbors.
         """
+        if not self.node.is_active():
+            return
+
         serializable_routing_table = {str(dest): list(route) for dest, route in self.routing_table.items()}
         for neighbor_id in self.neighbors:
             try:
@@ -187,7 +215,8 @@ class NetworkManager:
         Periodically send heartbeats.
         """
         while True:
-            self.send_heartbeat()
+            if self.node.is_active():
+                self.send_heartbeat()
             time.sleep(self.heartbeat_interval)
 
     def _discovery_thread(self):
@@ -195,6 +224,6 @@ class NetworkManager:
         Periodically broadcast positions for discovery.
         """
         while True:
-            self.broadcast_position()
+            if self.node.is_active():
+                self.broadcast_position()
             time.sleep(BROADCAST_INTERVAL)
-            
