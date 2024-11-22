@@ -15,6 +15,7 @@ import os
 import time
 from PIL import Image
 import os
+import random
 
 session = requests.Session()
 session.trust_env = False
@@ -98,12 +99,13 @@ class SatelliteNode:
 
     def capture_image(self, image_dir="satellite_captured_images"):
         """Capture or simulate an image."""
+        image_dir = os.path.join(image_dir, f"Node_{self.node_id}")
         if not os.path.exists(image_dir):
             os.makedirs(image_dir)
         image_name = f"astro_image_{int(time.time())}.png"
         image_path = os.path.join(image_dir, image_name)
 
-        img = Image.new('RGB', (1024, 1024), color=(0, 0, 255))
+        img = Image.new('RGB', (1024, 1024), color=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
         img.save(image_path)
         return image_path
 
