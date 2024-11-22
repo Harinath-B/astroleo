@@ -159,8 +159,6 @@ def add_satellite():
     ground_station.network.neighbors[node_id] = node_address
     return jsonify({"status": "Satellite added"}), 200
 
-
-
 @app.route('/exchange_key', methods=['POST'])
 def exchange_key():
    
@@ -210,40 +208,20 @@ def update_position():
 @app.route('/receive_image_from_satellite', methods=['POST'])
 def receive_image_from_satellite():
     """
-    Handle an incoming packet containing an image payload, decrypt it, and save the image.
+    Handle an incoming packet containing an image payload, delegate processing to RouteManager.
     """
     serialized_packet = request.get_data()
 
     try:
-        # Step 1: Deserialize the packet
-        packet = Packet.from_bytes(serialized_packet)
+        # Delegate the packet processing to the RouteManager
+        ground_station.router.receive_packet(serialized_packet)
 
-        # Step 2: Validate the packet
-        sender_id = packet.source_id
-        if sender_id not in ground_station.shared_symmetric_keys:
-            return jsonify({"error": f"No symmetric key with Node {sender_id}. Cannot decrypt image payload."}), 400
-
-        # Step 3: Decrypt the image payload
-        encrypted_payload = packet.payload
-        log(ground_station.general_logger, f"{ground_station.node_id} Shared key with {sender_id} - {ground_station.shared_symmetric_keys[sender_id]}")
-        decrypted_image_data = ground_station.encryption_manager.decrypt(
-            encrypted_payload, ground_station.shared_symmetric_keys[sender_id]
-        )
-
-        try:
-            decompressed_image_data = zlib.decompress(decrypted_image_data)
-        except zlib.error as e:
-            log(ground_station.general_logger, f"Failed to decompress image payload from Node {sender_id}: {e}", level="error")
-            return jsonify({"error": f"Failed to decompress image payload: {e}"}), 400
-
-        # Step 4: Save the decrypted image
-        image_path = ground_station.save_received_image(decompressed_image_data, sender_id)
-
-        return jsonify({"status": "Image received", "image_path": image_path}), 200
+        return jsonify({"status": "Image received and being processed"}), 200
 
     except Exception as e:
-        log(ground_station.general_logger, {"error": f"Failed to process the image: {str(e)}"})
+        log(ground_station.general_logger, f"Error in /receive_image_from_satellite: {str(e)}", level="error")
         return jsonify({"error": f"Failed to process the image: {str(e)}"}), 500
+
 
 @app.route('/get_received_images', methods=['GET'])
 def get_received_images():

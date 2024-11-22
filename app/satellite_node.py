@@ -92,7 +92,7 @@ class SatelliteNode:
         self.sequence_number += 1
         return packet
 
-    def capture_image(self, image_dir="images"):
+    def capture_image(self, image_dir="satellite_captured_images"):
         """Capture or simulate an image."""
         if not os.path.exists(image_dir):
             os.makedirs(image_dir)
@@ -104,25 +104,42 @@ class SatelliteNode:
         return image_path
 
     def transmit_image(self, dest_id, image_path):
-       
+        """
+        Transmit an image in chunks to a destination node.
+        """
         if not self.is_active():
             log(self.general_logger, "Node is offline and cannot transmit an image.")
             return False
-
+    
         try:
             with open(image_path, "rb") as img_file:
                 image_data = img_file.read()
         except FileNotFoundError:
             log(self.general_logger, f"Image file not found: {image_path}")
             return False
-
+    
+        log(self.general_logger, f"Size before compression {len(image_data)}")
         image_data = zlib.compress(image_data)
-        packet = self.create_packet(dest_id=dest_id, payload=image_data, message_type=2)
-        if not packet:
-            return False
-
-        success = self.router.forward_packet(packet)
-        return success
+        chunk_size = 512  # Define the size of each chunk
+        total_chunks = (len(image_data) + chunk_size - 1) // chunk_size  # Calculate total chunks
+        log(self.general_logger, f"Image len {len(image_data)}; Chunk size {chunk_size}")
+    
+        for i in range(total_chunks):
+            chunk = image_data[i * chunk_size:(i + 1) * chunk_size]
+            metadata = f"{i + 1}/{total_chunks}".encode('utf-8')  # Metadata as "chunk_number/total_chunks"
+            payload = metadata + b"|" + chunk  # Separate metadata and chunk data with "|"
+    
+            packet = self.create_packet(dest_id=dest_id, payload=payload, message_type=2)
+            if not packet:
+                return False
+    
+            if not self.router.forward_packet(packet):
+                log(self.general_logger, f"Failed to send chunk {i + 1} of {total_chunks}")
+                return False
+    
+        log(self.general_logger, f"Successfully transmitted image in {total_chunks} chunks.")
+        return True
+    
 
     def exchange_keys_with_neighbor(self, neighbor_id):
        
