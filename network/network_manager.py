@@ -7,6 +7,7 @@ from utils.logging_utils import log, setup_logger
 from utils.distance_utils import calculate_distance
 from network.packet import Packet
 import json
+import itertools
 
 class NetworkManager:
     def __init__(self, node):
@@ -52,7 +53,7 @@ class NetworkManager:
             return
 
         data = {"node_id": self.node.node_id, "position": self.node.position}
-        for node_id in range(1, 11):  # Assuming up to 10 nodes
+        for node_id in itertools.chain(range(1, 11), range (1001, 1003)):
             if node_id != self.node.node_id:
                 try:
                     requests.post(
@@ -138,10 +139,6 @@ class NetworkManager:
         response = dict()
         for neighbor_id in neighbors.keys():
             response[neighbor_id] = self.get_neighbor_address(neighbor_id)
-        # response = {
-        #     neighbor_id: self.get_neighbor_address(neighbor_id)
-        #     for neighbor_id in neighbors.keys()
-        # }
         return response, 200
     
     def get_neighbor_address(self, neighbor_id):

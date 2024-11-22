@@ -3,4 +3,5 @@ __pycache__/
 leoenv/
 ground_station_received_images/
 positions.json
+ground_stations.json
 images

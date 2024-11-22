@@ -14,8 +14,7 @@ class RouteManager:
 
         network = self.node.network
         dest_id = packet.dest_id
-
-        
+       
         if dest_id == self.node.node_id:
             log(self.node.general_logger, f"Node {self.node.node_id}: Received packet for destination {dest_id}")
             return True  
@@ -61,15 +60,19 @@ class RouteManager:
             return
 
         shared_key = self.node.shared_symmetric_keys[neighbor_id]
+        log(self.node.general_logger, f"{self.node.node_id} Shared key with {neighbor_id} - {shared_key}")
         encrypted_payload = self.node.encryption_manager.encrypt(packet.payload, shared_key)
-
         
         packet.payload = encrypted_payload
         serialized_packet = packet.to_bytes()
         log(self.node.general_logger, f"Serialized packet sent: {serialized_packet}")
         log(self.node.general_logger, f"Shared symmetric key for Node {neighbor_id}: {shared_key}")
 
-        url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive"
+        if (packet.message_type == 2):
+            url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive_image_from_satellite"
+        else:
+            url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive"
+
         try:
             response = requests.post(url, data=serialized_packet)
             if response.status_code == 200:

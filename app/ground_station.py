@@ -6,7 +6,9 @@ from utils.encryption_utils import EncryptionManager
 from network.network_manager import NetworkManager
 from network.route_manager import RouteManager
 from network.packet import Packet
-from utils.logging_utils import setup_logger
+from utils.logging_utils import setup_logger, log
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+import zlib
 
 # Flask app for handling endpoints
 app = Flask(__name__)
@@ -20,7 +22,7 @@ class GroundStation:
         self.state = "ACTIVE"  # Possible states: ACTIVE, FAILED
 
         # Directory for received images (named after the ground station ID)
-        self.received_images_dir = f"received_images_{self.node_id}"
+        self.received_images_dir = f"ground_station_received_images/received_images_{self.node_id}"
         if not os.path.exists(self.received_images_dir):
             os.makedirs(self.received_images_dir)
 
@@ -37,6 +39,7 @@ class GroundStation:
         self.shared_symmetric_keys = {}
 
         # Port for Flask server
+        self.network.start()
         self.port = port
 
     def save_received_image(self, image_data, source_id):
@@ -62,11 +65,8 @@ def initialize_station(station_id, position):
     global ground_station
 
     # Initialize the GroundStation instance
-    ground_station = GroundStation(station_id, position)
+    ground_station = GroundStation(1000 + station_id, position)
     print(f"Ground station {station_id} initialized at position {position}")
-
-    # Start network management services
-    ground_station.network.start()
 
     # Broadcast the public key to neighbors
     ground_station.network.broadcast_public_key()
@@ -74,6 +74,31 @@ def initialize_station(station_id, position):
     # Log the initialization
     ground_station.general_logger.info(f"Ground station {station_id} setup complete with public key broadcasted.")
 
+@app.route('/broadcast_key', methods=['POST'])
+def broadcast_key():
+   
+    if not ground_station or not ground_station.is_active():
+        return jsonify({"error": "Node is offline"}), 400
+
+    data = request.get_json()
+    neighbor_id = data.get("neighbor_id")
+    if not neighbor_id:
+        return jsonify({"error": "Neighbor ID not provided"}), 400
+
+    neighbor_address = ground_station.network.get_neighbor_address(neighbor_id)
+    if not neighbor_address:
+        return jsonify({"error": f"Neighbor {neighbor_id} not found"}), 404
+
+    public_key = ground_station.encryption_manager.get_public_key()
+    response = requests.post(
+        f"{neighbor_address}/exchange_key",
+        json={"node_id": ground_station.node_id, "public_key": public_key},
+    )
+
+    if response.status_code == 200:
+        return jsonify({"status": "broadcast_successful"}), 200
+    else:
+        return jsonify({"status": "broadcast_failed", "error": response.json()}), response.status_code
 
 
 @app.route('/receive', methods=['POST'])
@@ -81,7 +106,7 @@ def receive_packet():
     """
     Handle incoming serialized packets and decrypt them.
     """
-    serialized_packet = request.data
+    serialized_packet = request.get_data()
 
     try:
         # Deserialize the packet
@@ -99,7 +124,7 @@ def receive_packet():
         # Forward or process the packet
         if packet.dest_id == ground_station.node_id:
             log(ground_station.general_logger, f"Packet delivered to ground station: {decrypted_payload}")
-            return jsonify({"status": "Packet delivered", "payload": decrypted_payload}), 200
+            return jsonify({"status": "Packet delivered", "payload": decrypted_payload.decode()}), 200
         else:
             ground_station.router.forward_packet(packet)
             return jsonify({"status": "Packet forwarded"}), 200
@@ -108,6 +133,16 @@ def receive_packet():
         log(ground_station.general_logger, f"Error processing packet: {str(e)}", level="error")
         return jsonify({"error": "Failed to process packet"}), 500
 
+@app.route('/receive_routing_table', methods=['POST'])
+def receive_routing_table():
+   
+    if not ground_station or not ground_station.is_active():
+        return jsonify({"error": "Node is offline"}), 400
+
+    received_table = request.get_json()
+    sender_id = int(request.remote_addr.split('.')[-1])  # Simplified sender ID detection
+    ground_station.network.update_routing_table(received_table, sender_id)
+    return jsonify({"status": "received"}), 200
 
 @app.route('/add_satellite', methods=['POST'])
 def add_satellite():
@@ -124,6 +159,37 @@ def add_satellite():
     ground_station.network.neighbors[node_id] = node_address
     return jsonify({"status": "Satellite added"}), 200
 
+
+
+@app.route('/exchange_key', methods=['POST'])
+def exchange_key():
+   
+    if not ground_station or not ground_station.is_active():
+        return jsonify({"error": "Node is offline"}), 400
+
+    data = request.get_json()
+    sender_id = data.get("node_id")
+    public_key_base64 = data.get("public_key")
+    if not sender_id or not public_key_base64:
+        return jsonify({"error": "Invalid data provided"}), 400
+
+    try:
+        # Decode and deserialize the public key
+        public_key_pem = base64.b64decode(public_key_base64)
+        public_key = load_pem_public_key(public_key_pem)
+
+        # Store sender's public key and derive a shared symmetric key
+        ground_station.neighbor_public_keys[sender_id] = public_key
+        shared_key = ground_station.encryption_manager.generate_shared_secret(public_key_pem)
+
+        ground_station.shared_symmetric_keys[sender_id] = shared_key
+        log(ground_station.general_logger, f"[[KEY] {ground_station.shared_symmetric_keys}")
+
+        log(ground_station.general_logger, f"Key exchange successful with Node {sender_id}")
+        return jsonify({"status": "key_exchange_successful"}), 200
+    except Exception as e:
+        log(ground_station.general_logger, f"Error during key exchange with Node {sender_id}: {str(e), public_key_base64}", level="error")
+        return jsonify({"error": "Key exchange failed"}), 500
 
 @app.route('/update_position', methods=['POST'])
 def update_position():
@@ -144,29 +210,41 @@ def update_position():
 @app.route('/receive_image_from_satellite', methods=['POST'])
 def receive_image_from_satellite():
     """
-    Decrypt and save an image from a satellite.
+    Handle an incoming packet containing an image payload, decrypt it, and save the image.
     """
-    data = request.get_json()
-    node_id = data.get("node_id")
-    encrypted_image_data = data.get("image_data")  # Encrypted base64 image data
-
-    if not node_id or not encrypted_image_data:
-        return jsonify({"error": "Node ID or Image data missing"}), 400
+    serialized_packet = request.get_data()
 
     try:
-        # Decode the base64 encrypted image
-        encrypted_image_bytes = base64.b64decode(encrypted_image_data)
+        # Step 1: Deserialize the packet
+        packet = Packet.from_bytes(serialized_packet)
 
-        # Decrypt the image
-        decrypted_image = ground_station.encryption_manager.decrypt(encrypted_image_bytes)
+        # Step 2: Validate the packet
+        sender_id = packet.source_id
+        if sender_id not in ground_station.shared_symmetric_keys:
+            return jsonify({"error": f"No symmetric key with Node {sender_id}. Cannot decrypt image payload."}), 400
 
-        # Save the image
-        image_path = ground_station.save_received_image(decrypted_image, node_id)
+        # Step 3: Decrypt the image payload
+        encrypted_payload = packet.payload
+        log(ground_station.general_logger, f"{ground_station.node_id} Shared key with {sender_id} - {ground_station.shared_symmetric_keys[sender_id]}")
+        decrypted_image_data = ground_station.encryption_manager.decrypt(
+            encrypted_payload, ground_station.shared_symmetric_keys[sender_id]
+        )
+
+        try:
+            decompressed_image_data = zlib.decompress(decrypted_image_data)
+        except zlib.error as e:
+            log(ground_station.general_logger, f"Failed to decompress image payload from Node {sender_id}: {e}", level="error")
+            return jsonify({"error": f"Failed to decompress image payload: {e}"}), 400
+
+        # Step 4: Save the decrypted image
+        image_path = ground_station.save_received_image(decompressed_image_data, sender_id)
 
         return jsonify({"status": "Image received", "image_path": image_path}), 200
 
     except Exception as e:
+        log(ground_station.general_logger, {"error": f"Failed to process the image: {str(e)}"})
         return jsonify({"error": f"Failed to process the image: {str(e)}"}), 500
+
 
 @app.route('/get_info', methods=['GET'])
 def get_ground_station_info():

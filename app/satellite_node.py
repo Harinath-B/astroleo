@@ -6,12 +6,14 @@ from network.sync_manager import SyncManager
 from network.packet import Packet
 from utils.logging_utils import setup_logger, log
 from utils.encryption_utils import *
-from utils.image_utils import *
 import zlib
 import requests
 from flask import Blueprint, request, jsonify, Flask
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 import base64
+import os
+import time
+from PIL import Image
 
 app = Flask(__name__)
 satellite = None  # Global instance for the satellite node
@@ -91,6 +93,17 @@ class SatelliteNode:
         self.sequence_number += 1
         return packet
 
+    def capture_image(self, image_dir="images"):
+        """Capture or simulate an image."""
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
+        image_name = f"astro_image_{int(time.time())}.png"
+        image_path = os.path.join(image_dir, image_name)
+
+        img = Image.new('RGB', (1024, 1024), color=(0, 0, 255))
+        img.save(image_path)
+        return image_path
+
     def transmit_image(self, dest_id, image_path):
        
         if not self.is_active():
@@ -114,7 +127,6 @@ class SatelliteNode:
 
     def exchange_keys_with_neighbor(self, neighbor_id):
        
-
         if not self.is_active():
             log(self.general_logger, "Node is offline and cannot exchange keys.")
             return False
@@ -160,8 +172,7 @@ class SatelliteNode:
 
 
 def initialize_node(node_id, position):
-   
-   
+      
     global satellite
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
@@ -187,35 +198,27 @@ def recover_node():
 
 
 @app.route('/capture_image', methods=['POST'])
-def capture_image_endpoint():
-   
+def capture_and_transmit_image():
+    """
+    Capture an image and immediately transmit it to a specific satellite.
+    """
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
-    image_path = capture_image()
-    return jsonify({"status": "success", "image_path": image_path}), 200
+    # Step 1: Capture the image
+    try:
+        image_path = satellite.capture_image()
+    except Exception as e:
+        return jsonify({"error": f"Failed to capture image: {str(e)}"}), 500
 
-
-@app.route('/transmit_image', methods=['POST'])
-def transmit_image():
-   
-    if not satellite or not satellite.is_active():
-        return jsonify({"error": "Node is offline"}), 400
-
-    data = request.get_json()
-    dest_id = data.get("dest_id")
-    image_path = data.get("image_path")
-
-    if not dest_id or not image_path:
-        return jsonify({"error": "Destination ID or image path not provided"}), 400
-
+    # Step 2: Transmit the image to dest_id 1001
+    dest_id = 1001
     success = satellite.transmit_image(dest_id=dest_id, image_path=image_path)
 
     if success:
-        return jsonify({"status": "image_transmitted"}), 200
+        return jsonify({"status": "image_captured_and_transmitted", "image_path": image_path, "dest_id": dest_id}), 200
     else:
-        return jsonify({"status": "transmission_failed"}), 400
-
+        return jsonify({"error": "Failed to transmit image"}), 500
 
 @app.route('/get_received_images', methods=['GET'])
 def get_received_images():
