@@ -19,7 +19,7 @@ def main():
         satellite_app.run(host='0.0.0.0', port=5000 + node_id)
     if (node_type == 1):
         initialize_station(node_id, position)
-        ground_app.run(host='0.0.0.0', port=6000 + node_id)
+        ground_app.run(host='0.0.0.0', port=5000 + node_id)
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,5 @@ logs/
 __pycache__/
 leoenv/
 ground_station_received_images/
-satellite_captured_images
-positions.json
+satellite_captured_images/
 *.json
-images

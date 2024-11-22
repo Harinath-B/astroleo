@@ -14,7 +14,7 @@ def generate_ground_station_positions(num_stations):
     positions = {station_id: (round(random.uniform(0, 10), 2),
                               round(random.uniform(0, 10), 2),
                               round(random.uniform(0, 10), 2))
-                 for station_id in range(1, num_stations + 1)}
+                 for station_id in range(1001, 1001 + num_stations)}
     with open(GROUND_STATION_POSITIONS_FILE, 'w') as f:
         json.dump(positions, f)
     return positions

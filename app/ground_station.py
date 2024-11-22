@@ -58,7 +58,7 @@ class GroundStation:
 def initialize_station(station_id, position):
 
     global ground_station   
-    ground_station = GroundStation(1000 + station_id, position)
+    ground_station = GroundStation(station_id, position)
     print(f"Ground station {station_id} initialized at position {position}")   
     ground_station.network.broadcast_public_key()    
     ground_station.general_logger.info(f"Ground station {station_id} setup complete with public key broadcasted.")

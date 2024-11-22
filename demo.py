@@ -1,219 +1,174 @@
-import time
-import random
-import requests
-import threading
-import subprocess
-import json
 import os
-import base64
-
-from app.satellite_node import SatelliteNode
-from app.config import NUM_NODES, POSITIONS_FILE
+import time
+import subprocess
+from threading import Thread
+from requests import Session
 from utils.logging_utils import setup_logger, log
+import networkx as nx
+import matplotlib.pyplot as plt
 
-session = requests.Session()
+# Initialize logger
+DEMO_LOG = setup_logger("demo", "log")
+
+# Constants
+NUM_SATELLITES = 5
+NUM_GROUND_STATIONS = 2
+BASE_IP = "10.35.70.23"
+BASE_PORT = 5000
+RESULTS_DIR = "demo_results"
+
+# Session for HTTP requests
+session = Session()
 session.trust_env = False
 
-logger = setup_logger(node_id=0, log_type="demo_presentation")
+def prepare_directories():
+    """Prepare results and log directories."""
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(os.path.join(RESULTS_DIR, "images"), exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
 
-class SatelliteDemo:
+def launch_nodes():
+    """Launch satellite nodes."""
+    log(DEMO_LOG, "Launching satellite nodes...")
+    Thread(target=lambda: subprocess.run(
+        ["python3", "launch_nodes.py", str(NUM_SATELLITES)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )).start()
+    time.sleep(2)
 
-    def __init__(self, num_nodes=5):
+def launch_stations():
+    """Launch ground stations."""
+    log(DEMO_LOG, "Launching ground stations...")
+    Thread(target=lambda: subprocess.run(
+        ["python3", "launch_stations.py", str(NUM_GROUND_STATIONS)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )).start()
+    time.sleep(2)
 
-        self.num_nodes = num_nodes
-        self.processes = []
-        self.satellites = {}
-        self.running = True
+def initialize_demo():
+    """Initialize satellites and ground stations."""
+    log(DEMO_LOG, "Initializing satellite nodes and ground stations...")
+    launch_nodes()
+    launch_stations()
+    time.sleep(10)
+    log(DEMO_LOG, "Initialization complete.")
 
-    def generate_positions(self):
-        
-        positions = {
-            node_id: (
-                round(random.uniform(0, 10), 2),
-                round(random.uniform(0, 10), 2),
-                round(random.uniform(0, 10), 2)
-            ) for node_id in range(1, self.num_nodes + 1)
-        }
-        with open(POSITIONS_FILE, 'w') as f:
-            json.dump(positions, f)
-        return positions
-
-    def launch_nodes(self):
-        
-        positions = self.generate_positions()
-        os.makedirs("logs", exist_ok=True)
-        
-        log(logger, "Launching satellite nodes...", level="info")
-        for node_id, position in positions.items():
-            x, y, z = position
-            cmd = ["python", "main.py", str(node_id), str(x), str(y), str(z)]
-            log_file_path = f"logs/node_{node_id}.log"            
-            with open(log_file_path, "w") as log_file:
-                process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
-                self.processes.append(process)
-                        
-            self.satellites[node_id] = SatelliteNode(node_id=node_id, position=position)
-            log(logger, f"Launched Node {node_id} at position {position}", level="info")
-            time.sleep(0.5)  
-
-    def simulate_failures_and_recovery(self):
-        
-        while self.running:
-            failed_node = random.randint(1, self.num_nodes)
-            log(logger, f"Simulating failure for Node {failed_node}", level="warning")            
+def key_exchange():
+    """Perform key exchange between satellites and ground stations."""
+    log(DEMO_LOG, "Starting key exchange...")
+    for sat_id in range(1, NUM_SATELLITES + 1):
+        for gs_id in range(1001, 1001 + NUM_GROUND_STATIONS):
+            gs_port = BASE_PORT + gs_id
+            sat_port = BASE_PORT + sat_id
             try:
-                response = session.post(f"http://10.35.70.23:{5000 + failed_node}/fail")
-                if response.status_code == 200:
-                    log(logger, f"Node {failed_node} failed.", level="error")
-                else:
-                    log(logger, f"Failed to mark Node {failed_node} as FAILED: {response.status_code}", level="error")
+                session.post(f"http://{BASE_IP}:{sat_port}/broadcast_key")
+                session.post(f"http://{BASE_IP}:{gs_port}/broadcast_key")
+                log(DEMO_LOG, f"Key exchange between Satellite {sat_id} and Ground Station {2001 + gs_id} complete.")
+            except Exception as e:
+                log(DEMO_LOG, f"Key exchange failed for Satellite {sat_id} and Ground Station {2001 + gs_id}: {e}")
 
-            except requests.RequestException as e:
-                log(logger, f"Error failing Node {failed_node}: {e}", level="error")
-
-            time.sleep(10)  
-
-            try:
-                response = session.post(f"http://10.35.70.23:{5000 + failed_node}/recover")
-                if response.status_code == 200:
-                    log(logger, f"Node {failed_node} recovered.", level="info")
-                else:
-                    log(logger, f"Failed to recover Node {failed_node}: {response.status_code}", level="error")
-
-            except requests.RequestException as e:
-                log(logger, f"Error recovering Node {failed_node}: {e}", level="error")
-            time.sleep(10)  
-
-    def test_encryption_and_decryption(self, source_node_id, target_node_id):
-        
-        log(logger, f"Testing encryption and decryption between Node {source_node_id} and Node {target_node_id}", level="info")        
-        try:            
-            source_encryption_manager = self.satellites[source_node_id].encryption_manager
-            target_encryption_manager = self.satellites[target_node_id].encryption_manager
-            source_public_key = source_encryption_manager.get_public_key()
-            target_public_key = target_encryption_manager.get_public_key()
-            
-            source_shared_key = source_encryption_manager.generate_shared_secret(
-                base64.b64decode(target_public_key)
-            )
-            target_shared_key = target_encryption_manager.generate_shared_secret(
-                base64.b64decode(source_public_key)
-            )
-
-            test_message = "This is a secure test message."            
-            encrypted_message = source_encryption_manager.encrypt(test_message, source_shared_key)
-            log(logger, f"Encrypted Message: {encrypted_message}", level="info")            
-            decrypted_message = target_encryption_manager.decrypt(encrypted_message, target_shared_key).decode()
-            log(logger, f"Decrypted Message: {decrypted_message}", level="info")
-            
-            assert test_message == decrypted_message
-            log(logger, "Encryption and decryption test successful!", level="success")
-
+def capture_and_transmit_images():
+    """Capture and transmit images from satellites."""
+    log(DEMO_LOG, "Capturing and transmitting images from satellites...")
+    for sat_id in range(1, NUM_SATELLITES + 1):
+        port = BASE_PORT + sat_id
+        capture_url = f"http://{BASE_IP}:{port}/capture_image"
+        try:
+            response = session.post(capture_url)
+            if response.status_code == 200:
+                log(DEMO_LOG, f"Satellite {sat_id}: Image captured and transmitted successfully.")
+            else:
+                log(DEMO_LOG, f"Satellite {sat_id}: Failed to capture and transmit image: {response.text}")
         except Exception as e:
-            log(logger, f"Error during encryption and decryption test: {e}", level="error")
+            log(DEMO_LOG, f"Satellite {sat_id}: Error during image capture: {e}")
 
-    def test_capture_and_transmit_image(self, source_node_id, dest_node_id):
-        
-        log(logger, f"Testing capture and transmit image from Node {source_node_id} to Node {dest_node_id}", level="info")        
+def list_received_images():
+    """Retrieve and validate received images at ground stations."""
+    log(DEMO_LOG, "Listing received images from ground stations...")
+    for gs_id in range(NUM_GROUND_STATIONS):
+        port = BASE_PORT + 2001 + gs_id
+        url = f"http://{BASE_IP}:{port}/get_received_images"
         try:
-            
-            capture_response = session.post(f"http://10.35.70.23:{5000 + source_node_id}/capture_image")
-            if capture_response.status_code == 200:
-                image_path = capture_response.json().get("image_path")
-                log(logger, f"Image captured successfully by Node {source_node_id}: {image_path}", level="info")
-                                
-                transmit_response = session.post(
-                    f"http://10.35.70.23:{5000 + source_node_id}/transmit_image",
-                    json={"dest_id": dest_node_id, "image_path": image_path}
-                )
-                if transmit_response.status_code == 200:
-                    log(logger, f"Image successfully transmitted from Node {source_node_id} to Node {dest_node_id}.", level="info")
-                else:
-                    log(logger, f"Image transmission failed: {transmit_response.status_code}", level="error")
-            else:
-                log(logger, f"Image capture failed for Node {source_node_id}: {capture_response.status_code}", level="error")
-
-        except requests.RequestException as e:
-            log(logger, f"Error during capture and transmit image from Node {source_node_id}: {e}", level="error")
-
-    def test_packet_transmission(self, source_node_id, dest_node_id):
-        
-        log(logger, f"Testing packet transmission from Node {source_node_id} to Node {dest_node_id}", level="info")
-        
-        try:
-            response = session.post(
-                f"http://10.35.70.23:{5000 + source_node_id}/send",
-                json={"dest_id": dest_node_id, "payload": "Test packet message"}
-            )
+            response = session.get(url)
             if response.status_code == 200:
-                log(logger, f"Packet successfully sent from Node {source_node_id} to Node {dest_node_id}.", level="info")
+                images = response.json()["images"]
+                log(DEMO_LOG, f"Ground Station {2001 + gs_id}: Received images: {images}")
+                save_images(images, gs_id)
             else:
-                log(logger, f"Packet transmission failed: {response.status_code}", level="error")
+                log(DEMO_LOG, f"Ground Station {2001 + gs_id}: Error retrieving images: {response.text}")
+        except Exception as e:
+            log(DEMO_LOG, f"Ground Station {2001 + gs_id}: Error retrieving images: {e}")
 
-        except requests.RequestException as e:
-            log(logger, f"Error during packet transmission from Node {source_node_id}: {e}", level="error")
-
-    def test_heartbeat(self, node_id):
-        
-        log(logger, f"Testing heartbeat for Node {node_id}", level="info")
-        timestamp = time.time()
-        data = {"node_id": node_id, "timestamp": timestamp}
-        
+def save_images(images, gs_id):
+    """Save received images."""
+    for image_path in images:
         try:
-            response = session.post(f"http://10.35.70.23:{5000 + node_id}/heartbeat", json=data)
+            file_name = os.path.basename(image_path)
+            dest_path = os.path.join(RESULTS_DIR, "images", f"GS_{2001 + gs_id}_{file_name}")
+            with open(image_path, "rb") as src, open(dest_path, "wb") as dst:
+                dst.write(src.read())
+            log(DEMO_LOG, f"Image {file_name} saved to {dest_path}")
+        except Exception as e:
+            log(DEMO_LOG, f"Error saving image {file_name}: {e}")
+
+def demonstrate_time_sync():
+    """Demonstrate time synchronization among satellites."""
+    log(DEMO_LOG, "Demonstrating time synchronization across satellites...")
+    times = []
+    for sat_id in range(1, NUM_SATELLITES + 1):
+        port = BASE_PORT + sat_id
+        url = f"http://{BASE_IP}:{port}/get_local_time"
+        try:
+            response = session.get(url)
             if response.status_code == 200:
-                log(logger, f"Heartbeat sent from Node {node_id} successfully.", level="info")
+                local_time = response.json()["local_time"]
+                log(DEMO_LOG, f"Satellite {sat_id}: Local time: {local_time}")
+                times.append(local_time)
             else:
-                log(logger, f"Failed to send heartbeat from Node {node_id}. Status code: {response.status_code}", level="error")
+                log(DEMO_LOG, f"Satellite {sat_id}: Failed to retrieve local time: {response.text}")
+        except Exception as e:
+            log(DEMO_LOG, f"Satellite {sat_id}: Error retrieving local time: {e}")
+    log(DEMO_LOG, f"Time synchronization complete. Times: {times}")
 
-        except requests.RequestException as e:
-            log(logger, f"Error sending heartbeat for Node {node_id}: {e}", level="error")
+def visualize_network():
+    """Visualize satellite and ground station network."""
+    log(DEMO_LOG, "Visualizing the satellite-ground station network...")
+    G = nx.Graph()
+    G.add_nodes_from([f"Satellite {i}" for i in range(1, NUM_SATELLITES + 1)])
+    G.add_nodes_from([f"Ground Station {2001 + j}" for j in range(NUM_GROUND_STATIONS)])
+    for sat_id in range(1, NUM_SATELLITES + 1):
+        for gs_id in range(NUM_GROUND_STATIONS):
+            G.add_edge(f"Satellite {sat_id}", f"Ground Station {2001 + gs_id}")
+    pos = nx.spring_layout(G)
+    nx.draw(G, pos, with_labels=True, node_color="skyblue", edge_color="gray", node_size=2000, font_size=10)
+    plt.title("Network Visualization")
+    plt.savefig(os.path.join(RESULTS_DIR, "network_visualization.png"))
+    log(DEMO_LOG, "Network visualization saved as 'network_visualization.png'.")
 
-    def run_tests(self):
-        
-        log(logger, "Starting continuous satellite network tests...", level="info")       
-        while self.running:
-            for node_id in range(1, self.num_nodes + 1):
-                target_node_id = random.randint(1, self.num_nodes)
-                while target_node_id == node_id:
-                    target_node_id = random.randint(1, self.num_nodes)
-                
-                try:
-                    self.test_encryption_and_decryption(node_id, target_node_id)
-                    self.test_capture_and_transmit_image(node_id, target_node_id)
-                    self.test_packet_transmission(node_id, target_node_id)
-                    self.test_heartbeat(node_id)
+def demo():
+    """Run the complete Astroleo demonstration."""
+    prepare_directories()
+    log(DEMO_LOG, "Starting the Astroleo protocol demonstration...")
+    initialize_demo()
 
-                except requests.RequestException as e:
-                    log(logger, f"Error during tests for Node {node_id}: {e}", level="error")
-                time.sleep(1)
+    log(DEMO_LOG, "Key exchange phase...")
+    key_exchange()
 
-    def cleanup(self):
-        
-        self.running = False
-        for process in self.processes:
-            process.terminate()
-        log(logger, "Cleaned up all node processes", level="info")
+    log(DEMO_LOG, "Image transmission phase...")
+    capture_and_transmit_images()
 
-def main():
-    demo = SatelliteDemo(num_nodes=5)
-    
-    try:
-        demo.launch_nodes()
-        time.sleep(2)
-        failure_thread = threading.Thread(target=demo.simulate_failures_and_recovery)
-        failure_thread.daemon = True
-        failure_thread.start()
-        demo.run_tests()
+    log(DEMO_LOG, "Image retrieval phase...")
+    list_received_images()
 
-    except KeyboardInterrupt:
-        log(logger, "Demo stopped by user", level="info")
+    log(DEMO_LOG, "Time synchronization phase...")
+    demonstrate_time_sync()
 
-    except Exception as e:
-        log(logger, f"Error during demo: {e}", level="error")
+    log(DEMO_LOG, "Visualization phase...")
+    visualize_network()
 
-    finally:
-        demo.cleanup()
+    log(DEMO_LOG, "Demo complete!")
 
 if __name__ == "__main__":
-    main()
+    demo()
