@@ -1,11 +1,15 @@
 import requests
+import os
 
-BASE_URL = "http://127.0.0.1:5002"  # Replace with your server's address
+session = requests.Session()
+session.trust_env = False
+
+BASE_URL = "http://10.35.70.23:5002"  # Replace with your server's address
 
 def test_capture_image():
     """Test the /capture_image endpoint."""
     print("Testing image capture...")
-    response = requests.post(f"{BASE_URL}/capture_image")
+    response = session.post(f"{BASE_URL}/capture_image")
     if response.status_code == 200:
         print("Image captured successfully:", response.json())
         return response.json().get("image_path")
@@ -20,7 +24,7 @@ def test_transmit_image(dest_id, image_path):
         "dest_id": dest_id,
         "image_path": image_path
     }
-    response = requests.post(f"{BASE_URL}/transmit_image", json=data)
+    response = session.post(f"{BASE_URL}/transmit_image", json=data)
     if response.status_code == 200:
         print("Image transmitted successfully:", response.json())
     else:
@@ -29,7 +33,7 @@ def test_transmit_image(dest_id, image_path):
 def test_get_received_images():
     """Test the /get_received_images endpoint."""
     print("Testing received images retrieval...")
-    response = requests.get(f"http://127.0.0.1:5002/get_received_images")
+    response = session.get(f"http://10.35.70.23:5002/get_received_images")
     if response.status_code == 200:
         print("Received images:", response.json())
     else:

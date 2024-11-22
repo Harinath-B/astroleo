@@ -4,7 +4,6 @@ import random
 import json
 import os
 import threading
-import requests
 from app.config import NUM_GROUND_STATIONS, GROUND_STATION_POSITIONS_FILE
 
 

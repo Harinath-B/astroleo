@@ -8,6 +8,10 @@ from utils.distance_utils import calculate_distance
 from network.packet import Packet
 import json
 import itertools
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 class NetworkManager:
     def __init__(self, node):
@@ -56,8 +60,8 @@ class NetworkManager:
         for node_id in itertools.chain(range(1, 11), range (1001, 1003)):
             if node_id != self.node.node_id:
                 try:
-                    requests.post(
-                        f"http://127.0.0.1:{BASE_PORT + node_id}/update_position",
+                    session.post(
+                        f"http://10.35.70.23:{BASE_PORT + node_id}/update_position",
                         json=data,
                     )
                 except requests.RequestException:
@@ -80,8 +84,8 @@ class NetworkManager:
 
         for neighbor_id in self.neighbors:
             try:
-                requests.post(
-                    f"http://127.0.0.1:{BASE_PORT + int(neighbor_id)}/heartbeat",
+                session.post(
+                    f"http://10.35.70.23:{BASE_PORT + int(neighbor_id)}/heartbeat",
                     json={"node_id": self.node.node_id, "timestamp": time.time()},
                 )
                 log(self.node.general_logger, f"Sent heartbeat to Node {neighbor_id}")
@@ -122,7 +126,7 @@ class NetworkManager:
             try:
                 neighbor_address = self.get_neighbor_address(neighbor_id)
                 if neighbor_address:
-                    requests.post(
+                    session.post(
                         f"{neighbor_address}/exchange_key",
                         json={"node_id": self.node.node_id, "public_key": public_key},
                     )
@@ -144,7 +148,7 @@ class NetworkManager:
     
     def get_neighbor_address(self, neighbor_id):
        
-        return f"http://127.0.0.1:{5000 + neighbor_id}"
+        return f"http://10.35.70.23:{5000 + neighbor_id}"
 
     def update_routing_table(self, received_table, sender_id):
        
@@ -174,8 +178,8 @@ class NetworkManager:
         serializable_routing_table = {str(dest): list(route) for dest, route in self.routing_table.items()}
         for neighbor_id in self.neighbors:
             try:
-                requests.post(
-                    f"http://127.0.0.1:{BASE_PORT + int(neighbor_id)}/receive_routing_table",
+                session.post(
+                    f"http://10.35.70.23:{BASE_PORT + int(neighbor_id)}/receive_routing_table",
                     json=serializable_routing_table,
                 )
                 log(self.logger, f"Sent routing table to Neighbor {neighbor_id}")

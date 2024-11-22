@@ -2,6 +2,10 @@ import subprocess
 import time
 import requests
 import random
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 def launch_satellite(node_id, x, y, z):
     """Launch a single satellite node."""
@@ -10,9 +14,9 @@ def launch_satellite(node_id, x, y, z):
 
 def get_local_time(node_id):
     """Fetch the local time of a satellite node."""
-    url = f"http://127.0.0.1:{5000 + node_id}/get_local_time"
+    url = f"http://10.35.70.23:{5000 + node_id}/get_local_time"
     try:
-        response = requests.get(url, timeout=5)
+        response = session.get(url, timeout=5)
         if response.status_code == 200:
             return response.json()["local_time"]
         else:
@@ -23,9 +27,9 @@ def get_local_time(node_id):
 
 def synchronize_time(node_id, neighbor_times):
     """Send time synchronization data to a satellite node."""
-    url = f"http://127.0.0.1:{5000 + node_id}/synchronize_time"
+    url = f"http://10.35.70.23:{5000 + node_id}/synchronize_time"
     try:
-        response = requests.post(url, json={"neighbor_times": neighbor_times}, timeout=5)
+        response = session.post(url, json={"neighbor_times": neighbor_times}, timeout=5)
         if response.status_code == 200:
             print(f"Node {node_id} synchronized successfully.")
         else:

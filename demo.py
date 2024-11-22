@@ -61,7 +61,7 @@ class SatelliteDemo:
             log(logger, f"Simulating failure for Node {failed_node}", level="warning")
             
             try:
-                response = requests.post(f"http://127.0.0.1:{5000 + failed_node}/fail")
+                response = session.post(f"http://10.35.70.23:{5000 + failed_node}/fail")
                 if response.status_code == 200:
                     log(logger, f"Node {failed_node} failed.", level="error")
                 else:
@@ -72,7 +72,7 @@ class SatelliteDemo:
             time.sleep(10)  # Wait before recovery
 
             try:
-                response = requests.post(f"http://127.0.0.1:{5000 + failed_node}/recover")
+                response = session.post(f"http://10.35.70.23:{5000 + failed_node}/recover")
                 if response.status_code == 200:
                     log(logger, f"Node {failed_node} recovered.", level="info")
                 else:
@@ -126,14 +126,14 @@ class SatelliteDemo:
         
         try:
             # Capture an image using the `capture_image` endpoint
-            capture_response = requests.post(f"http://127.0.0.1:{5000 + source_node_id}/capture_image")
+            capture_response = session.post(f"http://10.35.70.23:{5000 + source_node_id}/capture_image")
             if capture_response.status_code == 200:
                 image_path = capture_response.json().get("image_path")
                 log(logger, f"Image captured successfully by Node {source_node_id}: {image_path}", level="info")
                 
                 # Transmit the captured image using the `transmit_image` endpoint
-                transmit_response = requests.post(
-                    f"http://127.0.0.1:{5000 + source_node_id}/transmit_image",
+                transmit_response = session.post(
+                    f"http://10.35.70.23:{5000 + source_node_id}/transmit_image",
                     json={"dest_id": dest_node_id, "image_path": image_path}
                 )
                 if transmit_response.status_code == 200:
@@ -150,8 +150,8 @@ class SatelliteDemo:
         log(logger, f"Testing packet transmission from Node {source_node_id} to Node {dest_node_id}", level="info")
         
         try:
-            response = requests.post(
-                f"http://127.0.0.1:{5000 + source_node_id}/send",
+            response = session.post(
+                f"http://10.35.70.23:{5000 + source_node_id}/send",
                 json={"dest_id": dest_node_id, "payload": "Test packet message"}
             )
             if response.status_code == 200:
@@ -168,7 +168,7 @@ class SatelliteDemo:
         data = {"node_id": node_id, "timestamp": timestamp}
         
         try:
-            response = requests.post(f"http://127.0.0.1:{5000 + node_id}/heartbeat", json=data)
+            response = session.post(f"http://10.35.70.23:{5000 + node_id}/heartbeat", json=data)
             if response.status_code == 200:
                 log(logger, f"Heartbeat sent from Node {node_id} successfully.", level="info")
             else:

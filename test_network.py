@@ -3,6 +3,10 @@ import json
 import time
 import random
 from config import BASE_PORT, DISCOVERY_RANGE, BROADCAST_INTERVAL
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 NUM_NODES = 10
 POSITIONS_FILE = "positions.json"
@@ -25,8 +29,8 @@ def initialize_nodes(positions):
     print("Initializing nodes with positions...")
     for node_id, position in positions.items():
         try:
-            requests.post(
-                f"http://127.0.0.1:{BASE_PORT + int(node_id)}/update_position", 
+            session.post(
+                f"http://10.35.70.23:{BASE_PORT + int(node_id)}/update_position", 
                 json={"node_id": node_id, "position": position}
             )
             print(f"Node {node_id} initialized at position {position}")
@@ -39,7 +43,7 @@ def check_routing_tables():
     print("\nChecking routing tables...")
     for node_id in range(1, NUM_NODES + 1):
         try:
-            response = requests.get(f"http://127.0.0.1:{BASE_PORT + int(node_id)}/get_routing_table")
+            response = session.get(f"http://10.35.70.23:{BASE_PORT + int(node_id)}/get_routing_table")
             if response.status_code == 200:
                 routing_table = response.json()
                 print(f"Routing table for Node {node_id}: {routing_table}")
@@ -51,8 +55,8 @@ def check_routing_tables():
 def send_message(src_id, dest_id, payload):
     """Send a message from one node to another."""
     try:
-        response = requests.post(
-            f"http://127.0.0.1:{BASE_PORT + int(src_id)}/send",
+        response = session.post(
+            f"http://10.35.70.23:{BASE_PORT + int(src_id)}/send",
             json={"dest_id": dest_id, "payload": payload}
         )
         print(f"Message from Node {src_id} to Node {dest_id}: {response.json()}")

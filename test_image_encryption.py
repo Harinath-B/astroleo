@@ -1,7 +1,10 @@
-import os
 from utils.encryption_utils import EncryptionManager  
 import base64
 import zlib
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 def test_image_encryption_decryption_with_compression():
     """

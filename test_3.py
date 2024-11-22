@@ -1,6 +1,10 @@
 import requests
 import json
 import time
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 # Configuration
 BASE_PORT = 5000
@@ -17,8 +21,8 @@ def print_routing_tables():
     print("\nRouting Tables of All Nodes:")
     for node_id in positions:
         try:
-            url = f"http://127.0.0.1:{BASE_PORT + int(node_id)}/get_routing_table"
-            response = requests.get(url)
+            url = f"http://10.35.70.23:{BASE_PORT + int(node_id)}/get_routing_table"
+            response = session.get(url)
             if response.status_code == 200:
                 routing_table = response.json()
                 print(f"Node {node_id} Routing Table:")
@@ -41,8 +45,8 @@ def test_routing(source_id, dest_id, payload):
     Test routing by sending a message from one node to another.
     """
     print(f"\n=== Routing Test: Sending message from Node {source_id} to Node {dest_id} ===")
-    url = f"http://127.0.0.1:{BASE_PORT + source_id}/send"
-    response = requests.post(url, json={"dest_id": dest_id, "payload": payload})
+    url = f"http://10.35.70.23:{BASE_PORT + source_id}/send"
+    response = session.post(url, json={"dest_id": dest_id, "payload": payload})
     if response.status_code == 200:
         print(f"Routing Test Successful: {response.json()}")
     else:
@@ -53,8 +57,8 @@ def test_encryption_decryption(source_id, dest_id, payload):
     Test encryption by ensuring payload encryption and decryption work correctly.
     """
     print(f"\n=== Encryption and Decryption Test: Sending encrypted message from Node {source_id} to Node {dest_id} ===")
-    send_url = f"http://127.0.0.1:{BASE_PORT + source_id}/send"
-    response = requests.post(send_url, json={"dest_id": dest_id, "payload": payload})
+    send_url = f"http://10.35.70.23:{BASE_PORT + source_id}/send"
+    response = session.post(send_url, json={"dest_id": dest_id, "payload": payload})
 
     if response.status_code == 200:
         print(f"Encryption Test Successful: {response.json()}")
@@ -63,8 +67,8 @@ def test_encryption_decryption(source_id, dest_id, payload):
 
     # Query the destination node to verify the last received packet
     print("\nValidating decryption at the destination node...")
-    get_last_received_url = f"http://127.0.0.1:{BASE_PORT + dest_id}/get_last_received_packet"
-    dest_response = requests.get(get_last_received_url)
+    get_last_received_url = f"http://10.35.70.23:{BASE_PORT + dest_id}/get_last_received_packet"
+    dest_response = session.get(get_last_received_url)
 
     if dest_response.status_code == 200:
         response_data = dest_response.json()

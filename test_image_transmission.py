@@ -1,10 +1,14 @@
 import requests
 import time
 import hashlib
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 # Endpoints
-SATELLITE_BASE_URL = "http://127.0.0.1:5001"  # Update with the actual satellite node's port
-GROUND_STATION_BASE_URL = "http://127.0.0.1:6001"  # Update with the actual ground station's port
+SATELLITE_BASE_URL = "http://10.35.70.23:5001"  # Update with the actual satellite node's port
+GROUND_STATION_BASE_URL = "http://10.35.70.23:6001"  # Update with the actual ground station's port
 
 def calculate_file_hash(file_path):
     """
@@ -26,7 +30,7 @@ def test_capture_and_transmit_image():
 
     # Step 1: Capture and transmit the image from the satellite
     print("Step 1: Capturing and transmitting image from the satellite...")
-    response = requests.post(f"{SATELLITE_BASE_URL}/capture_image")
+    response = session.post(f"{SATELLITE_BASE_URL}/capture_image")
     if response.status_code != 200:
         print(f"Failed to capture and transmit image: {response.json()}")
         return
@@ -46,7 +50,7 @@ def test_capture_and_transmit_image():
 
     # Step 4: Verify the image was received by the ground station
     print("Step 4: Verifying the image was received by the ground station...")
-    response = requests.get(f"{GROUND_STATION_BASE_URL}/get_received_images")
+    response = session.get(f"{GROUND_STATION_BASE_URL}/get_received_images")
     if response.status_code != 200:
         print(f"Failed to retrieve received images from ground station: {response.json()}")
         return

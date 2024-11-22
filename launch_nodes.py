@@ -7,6 +7,9 @@ import threading
 import requests
 from app.config import NUM_NODES, POSITIONS_FILE
 
+session = requests.Session()
+session.trust_env = False
+
 def generate_positions(num_nodes):
     positions = {node_id: (round(random.uniform(0, 10), 2),
                            round(random.uniform(0, 10), 2),
@@ -25,7 +28,7 @@ def simulate_failures(num_nodes, failure_interval=15, recovery_interval=15):
         failed_node = random.randint(1, num_nodes)
         print(f"Simulating failure for Node {failed_node}")
         try:
-            response = requests.post(f"http://127.0.0.1:{5000 + failed_node}/fail")
+            response = session.post(f"http://10.35.70.23:{5000 + failed_node}/fail")
             if response.status_code == 200:
                 print(f"Node {failed_node} failed.")
             else:
@@ -39,7 +42,7 @@ def simulate_failures(num_nodes, failure_interval=15, recovery_interval=15):
         # Recover the node
         print(f"Recovering Node {failed_node}")
         try:
-            response = requests.post(f"http://127.0.0.1:{5000 + failed_node}/recover")
+            response = session.post(f"http://10.35.70.23:{5000 + failed_node}/recover")
             if response.status_code == 200:
                 print(f"Node {failed_node} recovered.")
             else:

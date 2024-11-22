@@ -1,6 +1,10 @@
 from satellite_node import SatelliteNode
 from utils.encryption_utils import EncryptionManager
 import requests
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 def test_key_exchange_and_encrypted_communication():
     """
@@ -13,16 +17,16 @@ def test_key_exchange_and_encrypted_communication():
 
     # Step 1: Node 1 sends its public key to Node 2
     public_key_1 = node_1.encryption_manager.get_public_key()
-    response_1 = requests.post(
-        f"http://127.0.0.1:{5001}/exchange_key", 
+    response_1 = session.post(
+        f"http://10.35.70.23:{5001}/exchange_key", 
         json={"node_id": 2, "public_key": public_key_1}
     )
     assert response_1.status_code == 200, f"Key exchange with Node 2 failed!{response_1.status_code}"
 
     # Step 2: Node 2 sends its public key to Node 1
     public_key_2 = node_2.encryption_manager.get_public_key()
-    response_2 = requests.post(
-        f"http://127.0.0.1:{5002}/exchange_key", 
+    response_2 = session.post(
+        f"http://10.35.70.23:{5002}/exchange_key", 
         json={"node_id": 1, "public_key": public_key_2}
     )
     assert response_2.status_code == 200, "Key exchange with Node 1 failed!"

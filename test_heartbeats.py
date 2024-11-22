@@ -1,7 +1,10 @@
 import requests
 import time
-
 import json
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 def load_positions_from_json(json_file):
     """Load satellite positions from a JSON file."""
@@ -27,7 +30,7 @@ def test_heartbeats_with_json(json_file):
 
     # Check neighbors for each node
     for node_id in positions:
-        response = requests.get(f"http://127.0.0.1:{BASE_PORT + node_id}/get_neighbors")
+        response = session.get(f"http://10.35.70.23:{BASE_PORT + node_id}/get_neighbors")
         print(f"Node {node_id} neighbors: {response.json()}")
 
 # Run the test

@@ -14,6 +14,10 @@ import base64
 import os
 import time
 from PIL import Image
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 app = Flask(__name__)
 satellite = None  # Global instance for the satellite node
@@ -154,7 +158,7 @@ class SatelliteNode:
                 return False
 
             public_key = self.encryption_manager.get_public_key()
-            response = requests.post(
+            response = session.post(
                 f"{neighbor_address}/exchange_key",
                 json={"node_id": self.node_id, "public_key": public_key},
             )
@@ -407,7 +411,7 @@ def broadcast_key():
         return jsonify({"error": f"Neighbor {neighbor_id} not found"}), 404
 
     public_key = satellite.encryption_manager.get_public_key()
-    response = requests.post(
+    response = session.post(
         f"{neighbor_address}/exchange_key",
         json={"node_id": satellite.node_id, "public_key": public_key},
     )

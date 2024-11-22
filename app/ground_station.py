@@ -9,6 +9,10 @@ from network.packet import Packet
 from utils.logging_utils import setup_logger, log
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 import zlib
+import requests
+
+session = requests.Session()
+session.trust_env = False
 
 # Flask app for handling endpoints
 app = Flask(__name__)
@@ -90,7 +94,7 @@ def broadcast_key():
         return jsonify({"error": f"Neighbor {neighbor_id} not found"}), 404
 
     public_key = ground_station.encryption_manager.get_public_key()
-    response = requests.post(
+    response = session.post(
         f"{neighbor_address}/exchange_key",
         json={"node_id": ground_station.node_id, "public_key": public_key},
     )

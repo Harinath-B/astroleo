@@ -3,6 +3,10 @@ import time
 import logging
 import requests
 from utils.logging_utils import log
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 class SyncManager:
     def __init__(self, node, get_neighbors_func, sync_interval=5):
@@ -88,7 +92,7 @@ class SyncManager:
         for neighbor_id in neighbors:
             neighbor_address = neighbors[neighbor_id]
             try:
-                response = requests.get(f"{neighbor_address}/get_local_time", timeout=5)
+                response = session.get(f"{neighbor_address}/get_local_time", timeout=5)
                 if response.status_code == 200:
                     neighbor_times[neighbor_id] = response.json()["local_time"]
                 else:

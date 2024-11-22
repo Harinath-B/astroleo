@@ -1,6 +1,10 @@
 from utils.encryption_utils import EncryptionManager
 from network.packet import Packet
 import requests
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 def test_receive_endpoint():
     SHARED_KEY = b"sixteenbytekey!!"  # Valid 16-byte AES key
@@ -26,8 +30,8 @@ def test_receive_endpoint():
 
     # Send the packet to the /receive endpoint of Node 3
     destination_node = 3
-    response = requests.post(
-        f"http://127.0.0.1:{5000 + destination_node}/receive",
+    response = session.post(
+        f"http://10.35.70.23:{5000 + destination_node}/receive",
         data=serialized_data,
         headers={"Content-Type": "application/octet-stream"}
     )

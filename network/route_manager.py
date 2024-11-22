@@ -2,7 +2,10 @@ import requests
 from utils.logging_utils import log
 from network.packet import Packet
 import zlib
+import os
 
+session = requests.Session()
+session.trust_env = False
 
 class RouteManager:
     def __init__(self, node):
@@ -66,12 +69,12 @@ class RouteManager:
         log(self.node.general_logger, f"Shared symmetric key for Node {neighbor_id}: {shared_key}")
 
         if packet.message_type == 2:
-            url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive_image_from_satellite"
+            url = f"http://10.35.70.23:{5000 + int(neighbor_id)}/receive_image_from_satellite"
         else:
-            url = f"http://127.0.0.1:{5000 + int(neighbor_id)}/receive"
+            url = f"http://10.35.70.23:{5000 + int(neighbor_id)}/receive"
 
         try:
-            response = requests.post(url, data=serialized_packet)
+            response = session.post(url, data=serialized_packet)
             if response.status_code == 200:
                 log(self.node.general_logger, f"Node {self.node.node_id}: Successfully sent packet to Node {neighbor_id}")
             else:

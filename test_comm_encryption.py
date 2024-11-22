@@ -1,4 +1,8 @@
 import requests
+import os
+
+session = requests.Session()
+session.trust_env = False
 
 BASE_PORT = 5000
 
@@ -6,12 +10,12 @@ def test_communication(sender_id, receiver_id, message):
     """
     Test communication by sending a message from one node to another and verifying the received message.
     """
-    send_url = f"http://127.0.0.1:{BASE_PORT + sender_id}/send"
+    send_url = f"http://10.35.70.23:{BASE_PORT + sender_id}/send"
 
     # Send the message
     data = {"dest_id": receiver_id, "payload": message}
     try:
-        send_response = requests.post(send_url, json=data)
+        send_response = session.post(send_url, json=data)
         if send_response.status_code != 200:
             print(f"Message from Node {sender_id} to Node {receiver_id} failed: {send_response.json()}")
             return False
