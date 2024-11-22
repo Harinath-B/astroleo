@@ -39,7 +39,7 @@ def initialize_nodes():
 
     log("Launching satellite nodes and ground stations...")   
     for i in range(1, NUM_SATELLITES + 1):
-        launch_node(i, randint(0, 10), randint(0, 10), randint(0, 10), 0)    
+        launch_node(i, randint(0, 10), randint(0, 10), randint(5, 10), 0)    
     for j in range(GROUND_STATIONS):
         launch_node(1001 + j, randint(0, 10), randint(0, 10), 0, 1)
 
