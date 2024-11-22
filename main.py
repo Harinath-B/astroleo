@@ -1,4 +1,5 @@
 import sys
+
 from app.satellite_node import initialize_node
 from app.satellite_node import app as satellite_app
 from app.ground_station import initialize_station

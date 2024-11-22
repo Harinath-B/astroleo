@@ -1,28 +1,32 @@
+# network/network_manager.py
+
 import requests
 import time
 import threading
-from math import cos, sin, radians
+from math import cos, sin
+import json
+import itertools
+
 from app.config import DISCOVERY_RANGE, BROADCAST_INTERVAL, BASE_PORT
 from utils.logging_utils import log, setup_logger
 from utils.distance_utils import calculate_distance
 from network.packet import Packet
-import json
-import itertools
-import os
 
 session = requests.Session()
 session.trust_env = False
 
 class NetworkManager:
+
     def __init__(self, node):
+
         self.node = node
         self.neighbors = {}
         self.routing_table = {}
         self.logger = setup_logger(self.node.node_id, "general")
-        self.heartbeat_interval = 15  # Interval to send heartbeats (seconds)
-        self.heartbeat_timeout = 17  # Timeout to consider a neighbor inactive (seconds)
-        self.last_heartbeat = {}  # Track last received heartbeat from neighbors
-        self.position_update_interval = 20  # Position update interval (seconds)
+        self.heartbeat_interval = 15  
+        self.heartbeat_timeout = 17  
+        self.last_heartbeat = {}  
+        self.position_update_interval = 20  
 
     def start(self):
       
@@ -41,11 +45,10 @@ class NetworkManager:
 
     def update_position(self):
        
-        t = time.time()  # Current time
-        radius = 5  # Example orbital radius
-        speed = 0.01  # Angular velocity (radians/second)
-        center_x, center_y = 5, 5  # Orbital center
-
+        t = time.time()  
+        radius = 5  
+        speed = 0.01  
+        center_x, center_y = 5, 5  
         new_x = center_x + radius * cos(speed * t)
         new_y = center_y + radius * sin(speed * t)
         self.node.position = (new_x, new_y, self.node.position[2])
@@ -55,7 +58,6 @@ class NetworkManager:
       
         if not self.node.is_active():
             return
-
         data = {"node_id": self.node.node_id, "position": self.node.position}
         for node_id in itertools.chain(range(1, 11), range (1001, 1003)):
             if node_id != self.node.node_id:
@@ -64,6 +66,7 @@ class NetworkManager:
                         f"http://10.35.70.23:{BASE_PORT + node_id}/update_position",
                         json=data,
                     )
+
                 except requests.RequestException:
                     pass
 
@@ -89,6 +92,7 @@ class NetworkManager:
                     json={"node_id": self.node.node_id, "timestamp": time.time()},
                 )
                 log(self.node.general_logger, f"Sent heartbeat to Node {neighbor_id}")
+
             except requests.RequestException:
                 log(self.node.general_logger, f"Failed to send heartbeat to Node {neighbor_id}", level="error")
 
@@ -131,6 +135,7 @@ class NetworkManager:
                         json={"node_id": self.node.node_id, "public_key": public_key},
                     )
                     log(self.logger, f"Broadcasted public key to Node {neighbor_id}")
+
             except Exception as e:
                 log(self.logger, f"Failed to broadcast public key to Node {neighbor_id}: {e}", level="error")
 
@@ -140,7 +145,7 @@ class NetworkManager:
             return json.dumps({"error": "Node is offline"}), 400
 
         neighbors = self.neighbors
-        response = dict()
+        response = {}
         for neighbor_id in neighbors.keys():
             response[neighbor_id] = self.get_neighbor_address(neighbor_id)
         log(self.logger, f"Neighbors {response}")
@@ -157,7 +162,7 @@ class NetworkManager:
             return
 
         updated = False
-        for dest_id, (next_hop, distance) in received_table.items():
+        for dest_id, (_, distance) in received_table.items():
             if dest_id == self.node.node_id:
                 continue
 
@@ -183,6 +188,7 @@ class NetworkManager:
                     json=serializable_routing_table,
                 )
                 log(self.logger, f"Sent routing table to Neighbor {neighbor_id}")
+
             except requests.RequestException as e:
                 log(self.logger, f"Failed to send routing table to Neighbor {neighbor_id} - {e}", level="error")
 

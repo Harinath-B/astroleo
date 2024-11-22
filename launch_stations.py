@@ -3,7 +3,7 @@ import time
 import random
 import json
 import os
-import threading
+
 from app.config import NUM_GROUND_STATIONS, GROUND_STATION_POSITIONS_FILE
 
 
@@ -18,7 +18,6 @@ def generate_ground_station_positions(num_stations):
     with open(GROUND_STATION_POSITIONS_FILE, 'w') as f:
         json.dump(positions, f)
     return positions
-
 
 def launch_ground_stations(num_stations=NUM_GROUND_STATIONS):
     """

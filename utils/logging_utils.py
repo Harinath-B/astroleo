@@ -1,10 +1,11 @@
+# urils/loggin_utils.py
+
 import logging
 import os
 
 def setup_logger(node_id, log_type="general"):
     os.makedirs("logs", exist_ok=True)
-    log_filename = f"logs/node_{node_id}_{log_type}.log"
-    
+    log_filename = f"logs/node_{node_id}_{log_type}.log"    
     logger = logging.getLogger(f"Node_{node_id}_{log_type}")
     logger.setLevel(logging.INFO)
 
@@ -13,8 +14,7 @@ def setup_logger(node_id, log_type="general"):
         file_handler.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    
+        logger.addHandler(file_handler)    
     return logger
 
 def log(logger, message, level="info"):
