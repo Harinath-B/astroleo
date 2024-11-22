@@ -245,6 +245,26 @@ def receive_image_from_satellite():
         log(ground_station.general_logger, {"error": f"Failed to process the image: {str(e)}"})
         return jsonify({"error": f"Failed to process the image: {str(e)}"}), 500
 
+@app.route('/get_received_images', methods=['GET'])
+def get_received_images():
+    """
+    List all images received by the ground station.
+    """
+    if not ground_station or not ground_station.is_active():
+        return jsonify({"error": "Node is offline"}), 400
+
+    try:
+        # List all images in the received images directory
+        images = [
+            os.path.join(ground_station.received_images_dir, img)
+            for img in os.listdir(ground_station.received_images_dir)
+            if img.endswith((".png", ".jpg", ".jpeg"))
+        ]
+        return jsonify({"status": "success", "images": images}), 200
+    except Exception as e:
+        log(ground_station.general_logger, f"Error retrieving received images: {str(e)}", level="error")
+        return jsonify({"error": f"Failed to retrieve received images: {str(e)}"}), 500
+
 
 @app.route('/get_info', methods=['GET'])
 def get_ground_station_info():
