@@ -4,3 +4,4 @@ leoenv/
 ground_station_received_images/
 satellite_captured_images/
 *.json
+demo_results/
