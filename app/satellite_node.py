@@ -14,7 +14,6 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 import base64
 
 app = Flask(__name__)
-
 satellite = None  # Global instance for the satellite node
 
 
@@ -49,36 +48,33 @@ class SatelliteNode:
         
         
     def get_local_time(self):
-        """Retrieve the current synchronized local time."""
+       
         return self.sync_manager.get_local_time()
     
     def synchronize_time(self, neighbor_times):
-        """
-        Synchronize this node's time with the times from its neighbors.
-        :param neighbor_times: A dictionary of {neighbor_id: local_time}.
-        """
+
         self.sync_manager.synchronize(neighbor_times)
 
     def share_local_time(self):
-        """Share the local time with neighboring nodes."""
+       
         return {self.node_id: self.get_local_time()}
 
     def is_active(self):
-        """Check if the node is ACTIVE."""
+       
         return self.state == "ACTIVE"
 
     def fail(self):
-        """Mark the node as FAILED."""
+       
         self.state = "FAILED"
         log(self.general_logger, f"Node {self.node_id} has FAILED and is offline.")
 
     def recover(self):
-        """Recover the node to ACTIVE state."""
+       
         self.state = "ACTIVE"
         log(self.general_logger, f"Node {self.node_id} has RECOVERED and is back online.")
 
     def create_packet(self, dest_id, payload, message_type=1):
-        """Create a packet with specified destination, payload, and message type."""
+       
         if not self.is_active():
             log(self.general_logger, "Node is offline and cannot create a packet.")
             return None
@@ -96,7 +92,7 @@ class SatelliteNode:
         return packet
 
     def transmit_image(self, dest_id, image_path):
-        """Transmit an image to a destination node."""
+       
         if not self.is_active():
             log(self.general_logger, "Node is offline and cannot transmit an image.")
             return False
@@ -117,9 +113,8 @@ class SatelliteNode:
         return success
 
     def exchange_keys_with_neighbor(self, neighbor_id):
-        """
-        Exchange public keys with a specific neighbor and establish a shared symmetric key.
-        """
+       
+
         if not self.is_active():
             log(self.general_logger, "Node is offline and cannot exchange keys.")
             return False
@@ -130,7 +125,6 @@ class SatelliteNode:
                 log(self.general_logger, f"Neighbor {neighbor_id} address not found", level="error")
                 return False
 
-            # Send this node's public key to the neighbor
             public_key = self.encryption_manager.get_public_key()
             response = requests.post(
                 f"{neighbor_address}/exchange_key",
@@ -148,15 +142,14 @@ class SatelliteNode:
             return False
 
     def establish_symmetric_key(self, neighbor_id, public_key_bytes):
-        """
-        Establish a shared symmetric key with a neighbor using their public key.
-        """
+       
+       
         shared_key = self.encryption_manager.generate_shared_secret(public_key_bytes)
         self.shared_symmetric_keys[neighbor_id] = shared_key
         log(self.general_logger, f"Node {self.node_id}: Established symmetric key with Node {neighbor_id}")
 
     def to_json(self):
-        """Serialize the SatelliteNode instance to JSON."""
+       
         return {
             "node_id": self.node_id,
             "position": self.position,
@@ -167,38 +160,17 @@ class SatelliteNode:
 
 
 def initialize_node(node_id, position):
-    """
-    Initialize the satellite node with a unique ID and position.
-    """
+   
+   
     global satellite
     satellite = SatelliteNode(node_id, position)
     print(f"Satellite node {node_id} initialized at position {position}")
 
-    # Broadcast public key to neighbors
     satellite.network.broadcast_public_key()
-
-    # # Perform initial synchronization with neighbors
-    # try:
-    #     neighbors = satellite.network.get_neighbor_addresses()  # Assume this retrieves a dict {neighbor_id: address}
-    #     for neighbor_id, neighbor_address in neighbors.items():
-    #         response = requests.post(
-    #             f"{neighbor_address}/synchronize_time",
-    #             json={"neighbor_times": satellite.share_local_time()},
-    #         )
-    #         if response.status_code == 200:
-    #             print(f"Successfully synchronized with neighbor {neighbor_id}: {response.json()}")
-    #         else:
-    #             print(f"Failed to synchronize with neighbor {neighbor_id}: {response.status_code}")
-    # except Exception as e:
-    #     print(f"Error during synchronization: {e}")
-        
-    
-
-# Flask Endpoints
 
 @app.route('/fail', methods=['POST'])
 def fail_node():
-    """Mark the node as FAILED."""
+   
     if satellite:
         satellite.fail()
         return jsonify({"status": "Node has FAILED"}), 200
@@ -207,7 +179,7 @@ def fail_node():
 
 @app.route('/recover', methods=['POST'])
 def recover_node():
-    """Recover the node to ACTIVE state."""
+   
     if satellite:
         satellite.recover()
         return jsonify({"status": "Node has RECOVERED"}), 200
@@ -216,7 +188,7 @@ def recover_node():
 
 @app.route('/capture_image', methods=['POST'])
 def capture_image_endpoint():
-    """Capture an image and return its path."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -226,7 +198,7 @@ def capture_image_endpoint():
 
 @app.route('/transmit_image', methods=['POST'])
 def transmit_image():
-    """Transmit an image to a destination node."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -247,7 +219,7 @@ def transmit_image():
 
 @app.route('/get_received_images', methods=['GET'])
 def get_received_images():
-    """List all received images."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -261,7 +233,7 @@ def get_received_images():
 
 @app.route('/send', methods=['POST'])
 def send_message():
-    """Endpoint to send a message to a destination node."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -282,7 +254,7 @@ def send_message():
 
 @app.route('/receive', methods=['POST'])
 def receive():
-    """Endpoint to handle incoming packets."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -314,7 +286,7 @@ def get_keys():
 
 @app.route('/update_position', methods=['POST'])
 def update_position():
-    """Endpoint to receive position updates from other nodes."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -327,7 +299,7 @@ def update_position():
 
 @app.route('/receive_routing_table', methods=['POST'])
 def receive_routing_table():
-    """Endpoint to receive and update the routing table from a neighbor."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -339,7 +311,7 @@ def receive_routing_table():
 
 @app.route('/get_routing_table', methods=['GET'])
 def get_routing_table():
-    """Endpoint to retrieve the current routing table for a node."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -359,7 +331,7 @@ def get_routing_table():
 
 @app.route('/get_satellite', methods=['GET'])
 def get_satellite():
-    """Endpoint to return the serialized SatelliteNode instance."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -368,7 +340,7 @@ def get_satellite():
 
 @app.route('/heartbeat', methods=['POST'])
 def handle_heartbeat():
-    """Endpoint to handle incoming heartbeat packets."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -385,7 +357,7 @@ def handle_heartbeat():
 
 @app.route('/get_neighbors', methods=['GET'])
 def get_neighbors():
-    """Retrieve the list of active neighbors and their details."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -402,7 +374,7 @@ def get_neighbors():
 
 @app.route('/broadcast_key', methods=['POST'])
 def broadcast_key():
-    """Endpoint to send this node's public key to a specific neighbor node."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -429,7 +401,7 @@ def broadcast_key():
 
 @app.route('/exchange_key', methods=['POST'])
 def exchange_key():
-    """Endpoint to receive a public key from another node and derive a shared symmetric key."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 
@@ -459,14 +431,14 @@ def exchange_key():
     
 @app.route('/get_local_time', methods=['GET'])
 def get_local_time():
-    """Expose the node's current synchronized local time."""
+   
     if not satellite:
         return jsonify({"error": "Satellite instance not initialized"}), 400
     return jsonify({"local_time": satellite.sync_manager.get_local_time()}), 200
 
 @app.route('/synchronize_time', methods=['POST'])
 def synchronize_time():
-    """Synchronize this node's time with its neighbors."""
+   
     if not satellite or not satellite.is_active():
         return jsonify({"error": "Node is offline"}), 400
 

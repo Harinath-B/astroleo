@@ -12,9 +12,9 @@ class EncryptionManager:
         """
         Initialize the EncryptionManager with ECDH for key exchange and ChaCha20 for encryption.
         """
-        # Generate ECDH public/private key pair for key exchange (P-256 curve)
+        
         self.private_key = ec.generate_private_key(
-            ec.SECP256R1(),  # SECP256R1 (P-256) curve for ECDH
+            ec.SECP256R1(),  
             backend=default_backend()
         )
         self.public_key = self.private_key.public_key()
@@ -25,7 +25,7 @@ class EncryptionManager:
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
-        # Encode the PEM bytes in Base64 for HTTP transmission
+        
         return base64.b64encode(public_key_pem).decode('utf-8')
 
     def generate_shared_secret(self, recipient_public_key_bytes):
@@ -37,13 +37,13 @@ class EncryptionManager:
         recipient_public_key = serialization.load_pem_public_key(
             recipient_public_key_bytes, backend=default_backend()
         )
-        # Perform ECDH key exchange and get the shared secret
+        
         shared_secret = self.private_key.exchange(ec.ECDH(), recipient_public_key)
 
-        # Use HKDF to derive the symmetric key from the shared secret
+        
         symmetric_key = HKDF(
             algorithm=hashes.SHA256(),
-            length=32,  # 32 bytes for ChaCha20 (256-bit key)
+            length=32,  
             salt=None,
             info=None,
             backend=default_backend()
@@ -58,14 +58,14 @@ class EncryptionManager:
         :param symmetric_key: 32-byte ChaCha20 key.
         :return: Encrypted data with nonce prepended.
         """
-        # Generate a 16-byte nonce
+        
         nonce = os.urandom(16)
 
-        # Ensure plaintext is in bytes
+        
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
 
-        # Encrypt the plaintext
+        
         cipher = Cipher(
             algorithms.ChaCha20(symmetric_key, nonce),
             mode=None,
@@ -74,7 +74,7 @@ class EncryptionManager:
         encryptor = cipher.encryptor()
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
 
-        # Return nonce + ciphertext
+        
         return nonce + ciphertext
 
     def decrypt(self, encrypted_data, symmetric_key):
@@ -85,11 +85,11 @@ class EncryptionManager:
         :return: Decrypted plaintext as bytes.
         """
         try:
-            # Extract nonce (first 16 bytes) and ciphertext
+            
             nonce = encrypted_data[:16]
             ciphertext = encrypted_data[16:]
 
-            # Decrypt the ciphertext
+            
             cipher = Cipher(
                 algorithms.ChaCha20(symmetric_key, nonce),
                 mode=None,
@@ -98,6 +98,6 @@ class EncryptionManager:
             decryptor = cipher.decryptor()
             plaintext = decryptor.update(ciphertext) + decryptor.finalize()
 
-            return plaintext  # Return raw bytes
+            return plaintext  
         except Exception as e:
             raise ValueError(f"Decryption failed: {e}, payload: {encrypted_data}")

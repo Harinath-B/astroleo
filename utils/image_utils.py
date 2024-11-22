@@ -9,7 +9,6 @@ def capture_image(image_dir="images"):
     image_name = f"astro_image_{int(time.time())}.png"
     image_path = os.path.join(image_dir, image_name)
 
-    # Simulate a dummy image (replace with actual camera functionality)
     img = Image.new('RGB', (1024, 1024), color=(0, 0, 255))
     img.save(image_path)
     return image_path

@@ -58,7 +58,7 @@ def launch_nodes(num_nodes=NUM_NODES):
     try:
         for node_id, position in positions.items():
             x, y, z = position
-            cmd = ["python", "main.py", str(node_id), str(x), str(y), str(z)]
+            cmd = ["python", "main.py", str(node_id), str(x), str(y), str(z), str(0)]
             log_file_path = f"logs/node_{node_id}.log"
             with open(log_file_path, "w") as log_file:
                 process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)

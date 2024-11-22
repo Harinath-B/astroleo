@@ -20,18 +20,14 @@ class NetworkManager:
         self.position_update_interval = 10  # Position update interval (seconds)
 
     def start(self):
-        """
-        Start all necessary threads for dynamic position updates, discovery, and heartbeats.
-        """
+      
         threading.Thread(target=self._heartbeat_thread, daemon=True).start()
         threading.Thread(target=self.monitor_neighbors, daemon=True).start()
         threading.Thread(target=self._position_update_thread, daemon=True).start()
         threading.Thread(target=self._discovery_thread, daemon=True).start()
 
     def _position_update_thread(self):
-        """
-        Periodically update the node's position based on a mobility model.
-        """
+      
         while True:
             if self.node.is_active():
                 self.update_position()
@@ -39,9 +35,7 @@ class NetworkManager:
             time.sleep(self.position_update_interval)
 
     def update_position(self):
-        """
-        Simulate position updates using a circular orbital model.
-        """
+       
         t = time.time()  # Current time
         radius = 5  # Example orbital radius
         speed = 0.01  # Angular velocity (radians/second)
@@ -53,9 +47,7 @@ class NetworkManager:
         log(self.logger, f"Updated position to {self.node.position}")
 
     def broadcast_position(self):
-        """
-        Broadcast the updated position to all nodes in the network.
-        """
+      
         if not self.node.is_active():
             return
 
@@ -71,9 +63,7 @@ class NetworkManager:
                     pass
 
     def update_position_with_neighbor(self, neighbor_id, position):
-        """
-        Handle position updates from a neighbor.
-        """
+       
         distance = calculate_distance(self.node.position, position)
         if distance <= DISCOVERY_RANGE:
             self.neighbors[neighbor_id] = (position, distance)
@@ -83,9 +73,7 @@ class NetworkManager:
             self.propagate_routing_table()
 
     def send_heartbeat(self):
-        """
-        Send heartbeat packets to all neighbors.
-        """
+       
         if not self.node.is_active():
             return
 
@@ -100,16 +88,12 @@ class NetworkManager:
                 log(self.node.general_logger, f"Failed to send heartbeat to Node {neighbor_id}", level="error")
 
     def receive_heartbeat(self, sender_id, timestamp):
-        """
-        Handle a received heartbeat packet.
-        """
+     
         self.last_heartbeat[sender_id] = timestamp
         log(self.node.general_logger, f"Received heartbeat from Node {sender_id}")
 
     def monitor_neighbors(self):
-        """
-        Monitor neighbors' health by checking the last heartbeat timestamp.
-        """
+   
         while True:
             if self.node.is_active():
                 current_time = time.time()
@@ -120,9 +104,7 @@ class NetworkManager:
             time.sleep(self.heartbeat_interval)
 
     def remove_neighbor(self, neighbor_id):
-        """
-        Remove a neighbor from the neighbors list and update routing table.
-        """
+      
         if neighbor_id in self.neighbors:
             del self.neighbors[neighbor_id]
             del self.last_heartbeat[neighbor_id]
@@ -130,9 +112,7 @@ class NetworkManager:
         self.routing_table.pop(neighbor_id, None)
 
     def broadcast_public_key(self):
-        """
-        Broadcast this node's public key to all neighbors.
-        """
+       
         if not self.node.is_active():
             return
 
@@ -150,7 +130,7 @@ class NetworkManager:
                 log(self.logger, f"Failed to broadcast public key to Node {neighbor_id}: {e}", level="error")
 
     def get_neighbor_addresses(self):
-        """Retrieve the list of active neighbors and their details."""
+        
         if not self.node.is_active():
             return json.dumps({"error": "Node is offline"}), 400
 
@@ -165,15 +145,11 @@ class NetworkManager:
         return response, 200
     
     def get_neighbor_address(self, neighbor_id):
-        """
-        Get the HTTP address of a neighbor.
-        """
+       
         return f"http://127.0.0.1:{5000 + neighbor_id}"
 
     def update_routing_table(self, received_table, sender_id):
-        """
-        Update routing table based on a received routing table from a neighbor.
-        """
+       
         if sender_id not in self.neighbors:
             log(self.logger, f"Received routing table from unknown sender {sender_id}", level="warning")
             return
@@ -193,9 +169,7 @@ class NetworkManager:
             self.propagate_routing_table()
 
     def propagate_routing_table(self):
-        """
-        Propagate the routing table to all neighbors.
-        """
+        
         if not self.node.is_active():
             return
 
@@ -211,18 +185,14 @@ class NetworkManager:
                 log(self.logger, f"Failed to send routing table to Neighbor {neighbor_id} - {e}", level="error")
 
     def _heartbeat_thread(self):
-        """
-        Periodically send heartbeats.
-        """
+        
         while True:
             if self.node.is_active():
                 self.send_heartbeat()
             time.sleep(self.heartbeat_interval)
 
     def _discovery_thread(self):
-        """
-        Periodically broadcast positions for discovery.
-        """
+        
         while True:
             if self.node.is_active():
                 self.broadcast_position()
