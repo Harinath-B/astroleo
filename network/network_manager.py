@@ -15,10 +15,10 @@ class NetworkManager:
         self.neighbors = {}
         self.routing_table = {}
         self.logger = setup_logger(self.node.node_id, "general")
-        self.heartbeat_interval = 5  # Interval to send heartbeats (seconds)
-        self.heartbeat_timeout = 7  # Timeout to consider a neighbor inactive (seconds)
+        self.heartbeat_interval = 15  # Interval to send heartbeats (seconds)
+        self.heartbeat_timeout = 17  # Timeout to consider a neighbor inactive (seconds)
         self.last_heartbeat = {}  # Track last received heartbeat from neighbors
-        self.position_update_interval = 10  # Position update interval (seconds)
+        self.position_update_interval = 20  # Position update interval (seconds)
 
     def start(self):
       
@@ -139,6 +139,7 @@ class NetworkManager:
         response = dict()
         for neighbor_id in neighbors.keys():
             response[neighbor_id] = self.get_neighbor_address(neighbor_id)
+        log(self.logger, f"Neighbors {response}")
         return response, 200
     
     def get_neighbor_address(self, neighbor_id):

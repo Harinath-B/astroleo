@@ -35,7 +35,7 @@ class SatelliteNode:
         self.network = NetworkManager(self)
         self.router = RouteManager(self)
         
-        self.sync_manager = SyncManager(self.node_id, self.network.get_neighbor_addresses)
+        self.sync_manager = SyncManager(self, self.network.get_neighbor_addresses)
 
         # Initialize loggers for general and routing actions
         self.general_logger = setup_logger(self.node_id, "general")
@@ -45,9 +45,8 @@ class SatelliteNode:
         self.shared_symmetric_keys = {}
 
         # Start discovery process to find neighbors
-        self.network.start()
         self.sync_manager.start()
-        
+        self.network.start()        
         
     def get_local_time(self):
        
